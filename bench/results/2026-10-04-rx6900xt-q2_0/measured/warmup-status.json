@@ -1,0 +1,16 @@
+{
+  "label": "warmup",
+  "phase": "completed",
+  "started_at": "2026-10-03T16:46:43.509638+00:00",
+  "expected_prompt_tokens": null,
+  "request_sha256": "5b31a1c3004de75bc1ee2b1d3e8076cd59cefcd70df4996ed9827cddd6c4066f",
+  "updated_at": "2026-10-03T16:46:49.278231+00:00",
+  "finished_at": "2026-10-03T16:46:49.272230+00:00",
+  "client_ttft_s": 0.5109513999923365,
+  "client_total_latency_s": 5.7252548999967985,
+  "engine_prompt_tokens": 27,
+  "prefix_reused_tokens": 0,
+  "generated_tokens": 256,
+  "completion_status": "reached_256_token_limit",
+  "errors": []
+}

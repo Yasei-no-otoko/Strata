@@ -1,0 +1,123 @@
+{
+  "url": "http://127.0.0.1:8081",
+  "targets": [
+    32768,
+    128000
+  ],
+  "runs_per_target": 3,
+  "request_settings": {
+    "temperature": 0,
+    "reasoning_effort": "none",
+    "max_tokens": 256,
+    "warmup_max_tokens": 256,
+    "stream": true,
+    "warmup_excluded": true
+  },
+  "prompt_count_method": "Strata local Tokenizer + OpenAI openai_to_messages + ChatTemplate renderer",
+  "validation": {
+    "engine_prompt_count_must_match_local": true,
+    "prefix_reused_tokens_must_be_zero_for_measured_runs": true,
+    "early_stops_are_recorded_without_fabricating_256_tokens": true
+  },
+  "case_results": {
+    "32768": {
+      "runs": 3,
+      "target_prompt_tokens": 32768,
+      "engine_prompt_tokens": {
+        "median": 32768,
+        "min": 32768,
+        "max": 32768
+      },
+      "prefix_reused_tokens": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "generated_tokens": {
+        "median": 256,
+        "min": 256,
+        "max": 256
+      },
+      "client_ttft_s": {
+        "median": 102.89808980000089,
+        "min": 102.48578740000085,
+        "max": 104.02564680000069
+      },
+      "client_total_latency_s": {
+        "median": 107.7269091999915,
+        "min": 107.23208909999812,
+        "max": 108.76122660000692
+      },
+      "prefill_tok_s": {
+        "median": 318.9978359003015,
+        "min": 315.7040813770433,
+        "max": 320.5534555756424
+      },
+      "decode_tok_s": {
+        "median": 53.62716551102918,
+        "min": 52.716115481240486,
+        "max": 53.73184451347495
+      },
+      "completion_statuses": [
+        "reached_256_token_limit",
+        "reached_256_token_limit",
+        "reached_256_token_limit"
+      ],
+      "finish_reasons": [
+        "length",
+        "length",
+        "length"
+      ]
+    },
+    "128000": {
+      "runs": 3,
+      "target_prompt_tokens": 128000,
+      "engine_prompt_tokens": {
+        "median": 128000,
+        "min": 128000,
+        "max": 128000
+      },
+      "prefix_reused_tokens": {
+        "median": 0,
+        "min": 0,
+        "max": 0
+      },
+      "generated_tokens": {
+        "median": 256,
+        "min": 256,
+        "max": 256
+      },
+      "client_ttft_s": {
+        "median": 411.42976980000094,
+        "min": 408.5101636999898,
+        "max": 411.52122979999695
+      },
+      "client_total_latency_s": {
+        "median": 416.29961190000176,
+        "min": 413.76677930000005,
+        "max": 416.62204960000236
+      },
+      "prefill_tok_s": {
+        "median": 311.59738696378776,
+        "min": 311.4765228221038,
+        "max": 313.8817386792297
+      },
+      "decode_tok_s": {
+        "median": 49.91031739842471,
+        "min": 48.432563331252254,
+        "max": 52.268365388541795
+      },
+      "completion_statuses": [
+        "reached_256_token_limit",
+        "reached_256_token_limit",
+        "reached_256_token_limit"
+      ],
+      "finish_reasons": [
+        "length",
+        "length",
+        "length"
+      ]
+    }
+  },
+  "results_jsonl": "bench\\results\\2026-10-04-rx6900xt-q2_0\\measured\\results.jsonl"
+}

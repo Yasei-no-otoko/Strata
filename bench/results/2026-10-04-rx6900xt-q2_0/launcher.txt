@@ -1,0 +1,5 @@
+@echo off
+title Strata Q2_0
+cd /d "C:\Dev\Strata"
+"C:\Dev\Strata\.venv\Scripts\python.exe" "C:\Dev\Strata\serve\server.py" "--engine" "strata" "--config" "C:\Dev\Strata\strata-q2_0.json" "--port" "8081" "--open"
+if errorlevel 1 pause

@@ -1,0 +1,10 @@
+{
+  "source_commit": "814554564dec0cdd4000a5994ead0f5851ae2fde",
+  "sha256": "635864040DF6FA6D23A0F6C3D2C979059C2020A7268892A31F78DC44DDC21A87",
+  "backend": "HIP",
+  "architecture": "gfx1030",
+  "code_pr": "https://github.com/Niko1221/Strata/pull/626",
+  "installed_at_utc": "2026-10-03T16:12:58.4125007Z",
+  "note": "Windows processor-group-aware workers and reversible host CPU Sets; source also includes Linux full-mask restoration.",
+  "engine_log_offset_before_restart": 15676
+}

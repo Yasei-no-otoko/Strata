@@ -1,0 +1,9 @@
+strata verify: captured the 6-token window (upload no error, sync no error)
+strata verify: captured the 2-token window (upload no error, sync no error)
+strata verify: captured the 1-token window (upload no error, sync no error)
+strata verify: captured the 4-token window (upload no error, sync no error)
+strata verify: captured the 3-token window (upload no error, sync no error)
+strata serve: prompt 27 tokens = 0 reused + 27 read in 462 ms (58.5 tok/s), 256 generated in 5252 ms (48.7 tok/s), drafts accepted 151 of 233, 1 checkpoints
+strata serve: decode expert cache hit rate: 78.8% (109240 hits / 138686 lookups)
+strata serve: KV streaming: 99.45% of 155616 block reads hit VRAM, 3.4 MiB read from RAM
+strata serve: suffix drafts: 2 windows, 3 of 5 drafts accepted

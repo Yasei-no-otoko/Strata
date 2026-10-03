@@ -1,0 +1,48 @@
+{
+  "captured_at": "2026-10-04T01:49:44.4438965+09:00",
+  "engine": {
+    "model": "qwen3.8-flash-next-q2_0",
+    "max_context": 131072,
+    "images": false,
+    "version": "0.1.38",
+    "context": 131072,
+    "kv": "int8",
+    "kv_resident": 32768,
+    "expert_slots": 4354,
+    "expert_cache_mib": 5740,
+    "expert_slots_primary": 4354,
+    "expert_cache_primary_mib": 5740,
+    "spec": 6,
+    "mtp_max": 4,
+    "lookup": 3,
+    "vram_free_mib": 795,
+    "cvec": 0,
+    "arena_mib": 32400,
+    "pool_workers": 63,
+    "pcie_frac": "0.55",
+    "spec_min_p": "0.50",
+    "conversation_cache_mib": 0,
+    "conversation_cache_slots": 4,
+    "conversation_cache_min_free_mib": 2560,
+    "engine": "0.1.38"
+  },
+  "hardware": {
+    "cpu": 13.1,
+    "ram_used": 82902986752,
+    "ram_total": 137306128384,
+    "disk_read_mb": 0.03899141137057524,
+    "disk_write_mb": 0.003899141137057524,
+    "tok_s": 0.0,
+    "tok_s_mean": 0.0,
+    "prefill_tok_s_mean": 322.1
+  },
+  "hardware_static": {
+    "gpu_name": null,
+    "gpu_count": 1,
+    "cpu_name": "AMD Ryzen Threadripper 3990X 64-Core Processor",
+    "cores": 64,
+    "threads": 128,
+    "psutil": true
+  },
+  "note": "A single snapshot during the second 32K prompt, not a peak measurement."
+}

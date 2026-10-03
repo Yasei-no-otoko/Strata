@@ -1,0 +1,20 @@
+{
+  "label": "tokens-128000-run-2",
+  "phase": "completed",
+  "started_at": "2026-10-03T16:59:46.458466+00:00",
+  "expected_prompt_tokens": 128000,
+  "request_sha256": "cc65fb0203460b325927cc91386fbd02c744a665395dbd3e416789ad9949533a",
+  "updated_at": "2026-10-03T17:06:43.118717+00:00",
+  "elapsed_s": 412.183658199996,
+  "sse_bytes": 7507,
+  "chunks": 30,
+  "text_characters": 185,
+  "finished_at": "2026-10-03T17:06:43.111717+00:00",
+  "client_ttft_s": 411.52122979999695,
+  "client_total_latency_s": 416.62204960000236,
+  "engine_prompt_tokens": 128000,
+  "prefix_reused_tokens": 0,
+  "generated_tokens": 256,
+  "completion_status": "reached_256_token_limit",
+  "errors": []
+}

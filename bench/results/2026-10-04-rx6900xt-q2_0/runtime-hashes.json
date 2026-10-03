@@ -1,0 +1,27 @@
+[
+  {
+    "path": "C:\\Dev\\Strata\\engine-experiments\\affinity-reviewed-8145545\\strata.exe",
+    "bytes": 15362048,
+    "sha256": "635864040df6fa6d23a0f6c3d2c979059c2020a7268892a31f78dc44ddc21a87"
+  },
+  {
+    "path": "C:\\Dev\\Strata\\data\\expert-profile.bin",
+    "bytes": 196632,
+    "sha256": "8f59b4aa8873209dff11c11e37bcda9529a1335b724a1afeea37bf6388975baf"
+  },
+  {
+    "path": "C:\\Dev\\Strata\\serve\\server.py",
+    "bytes": 180017,
+    "sha256": "fc345372faf104e3de1d2b43e32b434c23d0341aa979de6c97be6969cb237e52"
+  },
+  {
+    "path": "C:\\Dev\\Strata\\serve\\frontend.py",
+    "bytes": 28557,
+    "sha256": "206347eb53073e718139f8cf3cbb83561befbf716e2dbd3c50eabd3dce5c908c"
+  },
+  {
+    "path": "C:\\Dev\\Strata\\tools\\strata_tokenizer.py",
+    "bytes": 17062,
+    "sha256": "e19a8c3c0ee672e857135c277be74bdb0acf810cf7a7c763984efeda36f3ee7f"
+  }
+]

@@ -1,0 +1,26 @@
+# Analysis of the Synthetic Python Module
+
+## 1. Overview and Pattern Recognition
+
+The module defines **658 functions** (`transform_00000` through `transform_00657`), each following a strict template:
+
+```python
+def transform_XXXXX(value: int, offset: int = XXXXX) -> int:
+    return (value * M + offset + K) % 100003
+```
+
+Where:
+- `M` is the multiplier (1–97, cycling)
+- `K` is a constant added to `offset`
+- The modulus is always **100003** (a prime number)
+
+### Key Observation: The Multiplier Cycle
+
+The multiplier `M` follows a **cyclic pattern of length 97**:
+
+| Function Index | Multiplier |
+|----------------|------------|
+| 0–96           | 1–97       |
+| 97–193         | 1–97       |
+| 194–290        | 1–97       |
+| 291–387        | 1

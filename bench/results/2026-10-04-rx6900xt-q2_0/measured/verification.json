@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "expected_targets": [
+    32768,
+    128000
+  ],
+  "expected_runs_per_target": 3,
+  "measured_records_found": 6,
+  "errors": []
+}

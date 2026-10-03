@@ -1,0 +1,81 @@
+{
+  "captured_at": "2026-10-04T01:35:31.5432321+09:00",
+  "os": "Microsoft Windows 11 Pro",
+  "os_version": "10.0.26300",
+  "cpu": "AMD Ryzen Threadripper 3990X 64-Core Processor ",
+  "physical_cores": 64,
+  "logical_processors": 128,
+  "ram_gib": 127.876,
+  "available_ram_gib_before_model_load": 82.613,
+  "gpu": [
+    {
+      "Name": "Meta Virtual Monitor",
+      "DriverVersion": "11.1.45.729"
+    },
+    {
+      "Name": "AMD Radeon RX 6900 XT",
+      "DriverVersion": "32.0.21045.5002"
+    }
+  ],
+  "storage": [
+    {
+      "FriendlyName": "CSSD-M2B2TPG3VNF",
+      "BusType": "NVMe",
+      "Size": 2000398934016
+    }
+  ],
+  "memory_modules": [
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    },
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    },
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    },
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    },
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    },
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    },
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    },
+    {
+      "Capacity": 17179869184,
+      "Speed": 3200,
+      "ConfiguredClockSpeed": 3200
+    }
+  ],
+  "pagefile": [
+    {
+      "AllocatedBaseSize": 8192,
+      "CurrentUsage": 1006,
+      "PeakUsage": 1011
+    }
+  ],
+  "backend": "HIP",
+  "rocm_bundle": "10.2.0a20260930",
+  "engine_source_commit": "814554564dec0cdd4000a5994ead0f5851ae2fde",
+  "server_source_commit": "b4a9b941e1506e031ea197d39c410d9e14c3e791",
+  "background_workloads": "Normal interactive desktop; unrelated applications were not stopped."
+}

@@ -1,0 +1,7 @@
+# Preserve captured request/response bytes, including model-generated whitespace.
+measured/* -text -whitespace
+launcher.txt -text -whitespace
+setup-output.txt -text -whitespace
+benchmark-console.txt -text -whitespace
+session-engine.txt -text -whitespace
+startup-engine.txt -text -whitespace

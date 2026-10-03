@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-10-04T02:10:58.9294700+09:00",
+  "live": {
+    "state": "reading",
+    "queued": 0,
+    "phase": "reading the prompt",
+    "prompt_tokens": 128000,
+    "prompt_read": 73728,
+    "prompt_total": 128000,
+    "generated": 0,
+    "max_tokens": 256,
+    "elapsed_s": 242.5,
+    "tok_s": null,
+    "tok_s_mean": null,
+    "prefill_tok_s_mean": 317.8,
+    "tok_s_window_s": null
+  },
+  "hardware": {
+    "cpu": 11.3,
+    "ram_used": 84186562560,
+    "ram_total": 137306128384,
+    "disk_read_mb": 0.03507967246030651,
+    "disk_write_mb": 0.2845351210669306,
+    "tok_s": 0.0,
+    "tok_s_mean": 0.0,
+    "prefill_tok_s_mean": 317.8
+  },
+  "note": "A snapshot during the third 128000-token request, not a peak measurement."
+}

@@ -1,0 +1,20 @@
+To explain how a Python heap maintains priority order, we must look at the underlying data structure, the algorithms used to maintain that structure, and how Python specifically implements it.
+
+### 1. The Core Concept: Binary Heap
+
+A heap is a specialized tree-based data structure that satisfies the **heap property**. In Python's `heapq` module, the default implementation is a **Min-Heap**.
+
+#### The Heap Property
+For a Min-Heap:
+1.  **Parent ≤ Children**: For any node `i`, the value of the parent node is less than or equal to the values of its children.
+2.  **Complete Binary Tree**: The tree is filled from left to right, level by level. This ensures the tree is balanced and allows efficient storage in an array.
+
+#### Array Representation
+Although conceptually a tree, a heap is stored as a **flat list (array)**. This is crucial for performance and cache locality.
+
+If a node is at index `i` (0-based):
+-   **Left Child**: `2 * i + 1`
+-   **Right Child**: `2 * i + 2`
+-   **Parent**: `(i - 1) // 2`
+
+**
