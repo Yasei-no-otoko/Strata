@@ -1,0 +1,132 @@
+{
+  "checked_at_jst": "2026-10-04T22:49:41.6202092+09:00",
+  "source_commit": "6f32ec070f23ced9f50e704d854d775da52591ab",
+  "release": {
+    "asset": "strata-windows-x64-hip.zip",
+    "tag": "v0.1.39",
+    "sha256": "79672951142fdf9ac20268b5a57c6f902a74015cbbcd1a3a2b46d3791704741b",
+    "matchedGitHubDigest": true
+  },
+  "installed_binary": {
+    "installedEngineSha256": "fe616b0f61b0ce1f18f37a9bd65542f883a64e78384230ffb42db927a59a6df2",
+    "matchesReleaseArchive": true
+  },
+  "model_preservation": {
+    "shards": 4,
+    "metadataUnchanged": true
+  },
+  "health": {
+    "status": "ok",
+    "max_context": 131072,
+    "model": "qwen3.8-flash-next-q2_0",
+    "images": false,
+    "api_key": false,
+    "loaded": true,
+    "service": "strata"
+  },
+  "props": {
+    "build_info": "Strata 0.1.39",
+    "total_slots": 1
+  },
+  "chat_completion": {
+    "id": "chatcmpl-9ab5e919e139490da8b3eb64",
+    "object": "chat.completion",
+    "created": 1791121677,
+    "model": "qwen3.8-flash-next-q2_0",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Strata update verified."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 6,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 21,
+      "prompt_ms": 498.2,
+      "prompt_per_token_ms": 23.724,
+      "prompt_per_second": 42.2,
+      "predicted_n": 6,
+      "predicted_ms": 270.6,
+      "predicted_per_token_ms": 45.1,
+      "predicted_per_second": 22.2,
+      "draft_n": 6,
+      "draft_n_accepted": 6
+    }
+  },
+  "responses": {
+    "id": "resp_778e6473f7434036bc8cbc9715dcb7c7",
+    "object": "response",
+    "created_at": 1791121707,
+    "status": "completed",
+    "background": false,
+    "error": null,
+    "incomplete_details": null,
+    "instructions": null,
+    "max_output_tokens": 32,
+    "model": "qwen3.8-flash-next-q2_0",
+    "output": [
+      {
+        "id": "msg_89ea49f7868e4bfbacf6044b785b631c",
+        "type": "message",
+        "status": "completed",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "Ready.",
+            "annotations": [],
+            "logprobs": []
+          }
+        ]
+      }
+    ],
+    "parallel_tool_calls": true,
+    "previous_response_id": null,
+    "reasoning": {
+      "effort": "none",
+      "summary": null
+    },
+    "store": false,
+    "temperature": 0,
+    "text": {
+      "format": {
+        "type": "text"
+      }
+    },
+    "tool_choice": "auto",
+    "tools": [],
+    "top_p": null,
+    "truncation": "disabled",
+    "usage": {
+      "input_tokens": 18,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens": 3,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 21
+    },
+    "user": null,
+    "metadata": {},
+    "completed_at": 1791121708
+  },
+  "web": {
+    "statusCode": 200,
+    "htmlBytes": 15538,
+    "containsStrata": true
+  }
+}
