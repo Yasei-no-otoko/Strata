@@ -1,0 +1,308 @@
+{
+  "checked_at": "2026-10-05T23:45:28.598961+09:00",
+  "hardware_and_engine": {
+    "Cpu": {
+      "Name": "AMD Ryzen Threadripper 3990X 64-Core Processor ",
+      "NumberOfCores": 64,
+      "NumberOfLogicalProcessors": 128
+    },
+    "RamBytes": 137306128384,
+    "Gpu": {
+      "Name": "AMD Radeon RX 6900 XT",
+      "DriverVersion": "32.0.21045.5002"
+    },
+    "Engine": {
+      "source": "prebuilt",
+      "backend": "hip",
+      "platform": "windows-x64",
+      "version": "0.1.39",
+      "archs": [
+        "gfx1100",
+        "gfx1101",
+        "gfx1102",
+        "gfx1200",
+        "gfx1201",
+        "gfx1030"
+      ],
+      "rocm": "10.2.0a20260930",
+      "hipblaslt_version": 100500,
+      "vision": "none",
+      "lib_dirs": [
+        "rocm/bin"
+      ]
+    },
+    "EngineSha256": "fe616b0f61b0ce1f18f37a9bd65542f883a64e78384230ffb42db927a59a6df2",
+    "SourceCommit": "087849a5bcd707286979bf95e14439039fb087a6"
+  },
+  "weights": {
+    "repo": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF",
+    "revision": "1e1bd8216ba46a590d8168cca08f68de9536e4ac",
+    "elapsed_seconds": 288.51013827323914,
+    "files": [
+      {
+        "path": "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+        "size": 39785790560,
+        "sha256": "d815c962f3436e5571f81f874989b89cd25443a15c6b39f9336982b8d1e42d36"
+      },
+      {
+        "path": "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00002-of-00002.gguf",
+        "size": 36180282560,
+        "sha256": "953b8b1ad56dd6885ac724a770e3b6e914e9e65287f61ee853da285914503cd5"
+      }
+    ],
+    "gguf_structure_valid": true
+  },
+  "config": {
+    "exe": "C:\\Dev\\Strata\\engine\\strata.exe",
+    "args": [
+      "--pack",
+      "C:\\Dev\\Strata-data\\packs\\swift-huihui-iq3_xxs",
+      "--native",
+      "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+      "--ple-gguf",
+      "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+      "--expert-profile",
+      "C:\\Dev\\Strata\\data\\expert-profile.bin",
+      "--expert-cache",
+      "auto",
+      "--prefill",
+      "auto",
+      "--spec",
+      "4",
+      "--spec-min-p",
+      "0.5",
+      "--mtp",
+      "C:\\Dev\\Strata-data\\mtp\\rt",
+      "--max-context",
+      "131072",
+      "--kv",
+      "int8",
+      "--kv-resident",
+      "32768"
+    ],
+    "cwd": "C:\\Dev\\Strata",
+    "tokenizer": "C:\\Dev\\Strata-data\\packs\\swift-huihui-iq3_xxs\\tokenizer",
+    "model_name": "huihui-swift-1.5-abliterated-iq3_xxs",
+    "log": "C:\\Dev\\Strata\\strata-swift-huihui-iq3_xxs.log",
+    "lib_dirs": [
+      "C:\\Dev\\Strata\\engine\\rocm\\bin"
+    ],
+    "port": 8081,
+    "backend": "hip",
+    "host": "127.0.0.1",
+    "model_source": {
+      "repo": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF",
+      "revision": "1e1bd8216ba46a590d8168cca08f68de9536e4ac",
+      "quantization": "IQ3_XXS",
+      "sha256_verified": true
+    }
+  },
+  "checks": {
+    "health": {
+      "status": "ok",
+      "max_context": 131072,
+      "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+      "images": false,
+      "api_key": false,
+      "loaded": true,
+      "service": "strata"
+    },
+    "v1/models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "huihui-swift-1.5-abliterated-iq3_xxs",
+          "object": "model",
+          "status": {
+            "value": "loaded"
+          },
+          "meta": {
+            "n_ctx": 131072
+          },
+          "architecture": {
+            "input_modalities": [
+              "text"
+            ],
+            "output_modalities": [
+              "text"
+            ]
+          }
+        }
+      ]
+    },
+    "web_page": {
+      "status": 200,
+      "contains_strata": true
+    }
+  },
+  "props_build_info": "Strata 0.1.39",
+  "generations": {
+    "chat_english": {
+      "elapsed_seconds": 0.6932520866394043,
+      "response": {
+        "id": "chatcmpl-36964c7be57c4a3589f18791",
+        "object": "chat.completion",
+        "created": 1791211407,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Swift ready."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 19,
+          "completion_tokens": 4,
+          "total_tokens": 23,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 19,
+          "prompt_ms": 476.7,
+          "prompt_per_token_ms": 25.089,
+          "prompt_per_second": 39.9,
+          "predicted_n": 4,
+          "predicted_ms": 209.6,
+          "predicted_per_token_ms": 52.4,
+          "predicted_per_second": 19.1,
+          "draft_n": 3,
+          "draft_n_accepted": 3
+        }
+      }
+    },
+    "chat_japanese": {
+      "elapsed_seconds": 0.6482579708099365,
+      "response": {
+        "id": "chatcmpl-d738230e368d478a9accb66b",
+        "object": "chat.completion",
+        "created": 1791211407,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "こんにちは。"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 19,
+          "completion_tokens": 3,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 19,
+          "prompt_ms": 384.4,
+          "prompt_per_token_ms": 20.232,
+          "prompt_per_second": 49.4,
+          "predicted_n": 3,
+          "predicted_ms": 247.9,
+          "predicted_per_token_ms": 82.633,
+          "predicted_per_second": 12.1,
+          "draft_n": 4,
+          "draft_n_accepted": 3
+        }
+      }
+    },
+    "responses": {
+      "elapsed_seconds": 0.5466823577880859,
+      "response": {
+        "id": "resp_60fe5cf4dde0476196f0b712e8491662",
+        "object": "response",
+        "created_at": 1791211408,
+        "status": "completed",
+        "background": false,
+        "error": null,
+        "incomplete_details": null,
+        "instructions": null,
+        "max_output_tokens": 64,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "output": [
+          {
+            "id": "msg_61924b2ed51e4171b8a24e5d2bb5bc23",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Ready.",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "parallel_tool_calls": true,
+        "previous_response_id": null,
+        "reasoning": {
+          "effort": "none",
+          "summary": null
+        },
+        "store": false,
+        "temperature": 0,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "tool_choice": "auto",
+        "tools": [],
+        "top_p": null,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 18,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 3,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 21
+        },
+        "user": null,
+        "metadata": {},
+        "completed_at": 1791211408
+      }
+    }
+  },
+  "removal": {
+    "deleted_directories": [
+      "C:\\Dev\\Strata-data\\models\\Q2_0",
+      "C:\\Dev\\Strata-data\\models\\coder-IQ1_M",
+      "C:\\Dev\\Strata-data\\packs\\q2_0",
+      "C:\\Dev\\Strata-data\\packs\\coder-iq1_m"
+    ],
+    "deleted_active_configs_and_launchers": [
+      "C:\\Dev\\Strata\\strata-q2_0.json",
+      "C:\\Dev\\Strata\\strata-coder-iq1_m.json",
+      "C:\\Dev\\Strata\\run-q2_0.bat",
+      "C:\\Dev\\Strata\\run-coder-iq1_m.bat"
+    ],
+    "config_backups": "C:\\Dev\\Strata\\logs\\huihui-swift-20261005",
+    "retained_shared_mtp": "C:\\Dev\\Strata-data\\mtp\\rt",
+    "free_bytes_before": 190210281472,
+    "free_bytes_after": 289223790592,
+    "all_removed": true
+  },
+  "inference_all_passed": true,
+  "limitations": [
+    "Short inference only",
+    "No sustained throughput benchmark",
+    "No long-context evaluation"
+  ]
+}
