@@ -1,0 +1,430 @@
+{
+  "checked_at": "2026-10-06T19:32:08.459985+09:00",
+  "prior_installation_commit": "cb6bd32c1ccc04bb4a90f080b7ec36adf0630f08",
+  "release_source_commit": "1cbcacbcae2953f3be9edc46369f0c875bc6ab8b",
+  "hardware": {
+    "Cpu": {
+      "Name": "AMD Ryzen Threadripper 3990X 64-Core Processor ",
+      "NumberOfCores": 64,
+      "NumberOfLogicalProcessors": 128
+    },
+    "RamBytes": 137306128384,
+    "Gpu": {
+      "Name": "AMD Radeon RX 6900 XT",
+      "DriverVersion": "32.0.21045.5002"
+    }
+  },
+  "official_release": {
+    "asset_url": "https://github.com/Niko1221/Strata/releases/download/v0.1.40/strata-windows-x64-hip.zip",
+    "asset_bytes": 627481056,
+    "asset_sha256": "b2fa4a660409fa0f842d442a6991f359a7f0aebefec6f854c852a8b639621d7a",
+    "github_digest_matched": true,
+    "build": {
+      "source": "prebuilt",
+      "backend": "hip",
+      "platform": "windows-x64",
+      "version": "0.1.40",
+      "archs": [
+        "gfx1100",
+        "gfx1101",
+        "gfx1102",
+        "gfx1200",
+        "gfx1201",
+        "gfx1030",
+        "gfx1151"
+      ],
+      "rocm": "10.2.0a20260930",
+      "hipblaslt_version": 100500,
+      "vision": "none",
+      "lib_dirs": [
+        "rocm/bin"
+      ]
+    },
+    "strata_exe_sha256": "e7605caf89b939e262ff9c0ca763aa99493277c9fa61d3cc9ee630f902b9ff96"
+  },
+  "vision_build": {
+    "mmproj_path": "C:\\Dev\\Strata-data\\models\\mmproj-Swift-Qwen3.8-Flash-Next-BF16.gguf",
+    "repo": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF",
+    "revision": "1e1bd8216ba46a590d8168cca08f68de9536e4ac",
+    "mmproj_bytes": 907543520,
+    "mmproj_sha256": "cd1140f4abba943ce8d9fa92fed8407e389954d26907efde7b72153c75bd8a60",
+    "encoder_path": "C:\\Dev\\Strata\\engine\\strata-vision.exe",
+    "encoder_sha256": "4bf57f1ef3868016321757f90370de555c28c94ab18bfac3e38f8d3dced7fdea",
+    "llama_cpp_commit": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+    "vision_source_hash": "b8ba8d7bfed20e5b",
+    "mode": "cpu",
+    "build_successful": true
+  },
+  "config": {
+    "exe": "C:\\Dev\\Strata\\engine\\strata.exe",
+    "args": [
+      "--pack",
+      "C:\\Dev\\Strata-data\\packs\\swift-huihui-iq3_xxs",
+      "--native",
+      "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+      "--ple-gguf",
+      "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+      "--expert-profile",
+      "C:\\Dev\\Strata\\data\\expert-profile.bin",
+      "--expert-cache",
+      "auto",
+      "--prefill",
+      "auto",
+      "--spec",
+      "4",
+      "--spec-min-p",
+      "0.5",
+      "--mtp",
+      "C:\\Dev\\Strata-data\\mtp\\rt",
+      "--max-context",
+      "131072",
+      "--kv",
+      "int8",
+      "--kv-resident",
+      "32768",
+      "--vision"
+    ],
+    "cwd": "C:\\Dev\\Strata",
+    "tokenizer": "C:\\Dev\\Strata-data\\packs\\swift-huihui-iq3_xxs\\tokenizer",
+    "model_name": "huihui-swift-1.5-abliterated-iq3_xxs",
+    "log": "C:\\Dev\\Strata\\strata-swift-huihui-iq3_xxs.log",
+    "lib_dirs": [
+      "C:\\Dev\\Strata\\engine\\rocm\\bin"
+    ],
+    "port": 8081,
+    "backend": "hip",
+    "host": "127.0.0.1",
+    "model_source": {
+      "repo": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF",
+      "revision": "1e1bd8216ba46a590d8168cca08f68de9536e4ac",
+      "quantization": "IQ3_XXS",
+      "sha256_verified": true
+    },
+    "vision": {
+      "exe": "C:\\Dev\\Strata\\engine\\strata-vision.exe",
+      "mmproj": "C:\\Dev\\Strata-data\\models\\mmproj-Swift-Qwen3.8-Flash-Next-BF16.gguf",
+      "model": "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+      "gpu": false,
+      "max_tokens": 300,
+      "threads": 64
+    }
+  },
+  "config_changes_only_vision": true,
+  "models_preserved_by_path_size_mtime": true,
+  "model_files": [
+    {
+      "FullName": "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+      "Length": 39785790560,
+      "LastWriteTimeUtc": "2026-10-05T14:39:18.2121741Z"
+    },
+    {
+      "FullName": "C:\\Dev\\Strata-data\\models\\huihui-swift-IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00002-of-00002.gguf",
+      "Length": 36180282560,
+      "LastWriteTimeUtc": "2026-10-05T14:39:49.7926829Z"
+    }
+  ],
+  "runtime": {
+    "health": {
+      "status": "ok",
+      "max_context": 131072,
+      "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+      "images": true,
+      "api_key": false,
+      "loaded": true,
+      "service": "strata"
+    },
+    "v1/models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "huihui-swift-1.5-abliterated-iq3_xxs",
+          "object": "model",
+          "status": {
+            "value": "loaded"
+          },
+          "meta": {
+            "n_ctx": 131072
+          },
+          "architecture": {
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "output_modalities": [
+              "text"
+            ]
+          }
+        }
+      ]
+    },
+    "web_page": {
+      "status": 200,
+      "contains_strata": true
+    },
+    "chat_english": {
+      "elapsed_seconds": 0.8129999999946449,
+      "response": {
+        "id": "chatcmpl-98930623d69c45bd94621200",
+        "object": "chat.completion",
+        "created": 1791282613,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Strata update verified."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 21,
+          "completion_tokens": 6,
+          "total_tokens": 27,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 21,
+          "prompt_ms": 553.9,
+          "prompt_per_token_ms": 26.376,
+          "prompt_per_second": 37.9,
+          "predicted_n": 6,
+          "predicted_ms": 237.5,
+          "predicted_per_token_ms": 39.583,
+          "predicted_per_second": 25.3,
+          "draft_n": 6,
+          "draft_n_accepted": 6
+        }
+      }
+    },
+    "chat_japanese": {
+      "elapsed_seconds": 0.5470000000204891,
+      "response": {
+        "id": "chatcmpl-63b9dda36b1740a4b3e95a4b",
+        "object": "chat.completion",
+        "created": 1791282614,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "こんにちは。"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 19,
+          "completion_tokens": 3,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 19,
+          "prompt_ms": 343.6,
+          "prompt_per_token_ms": 18.084,
+          "prompt_per_second": 55.3,
+          "predicted_n": 3,
+          "predicted_ms": 182.5,
+          "predicted_per_token_ms": 60.833,
+          "predicted_per_second": 16.4,
+          "draft_n": 4,
+          "draft_n_accepted": 3
+        }
+      }
+    },
+    "responses_text": {
+      "elapsed_seconds": 0.46799999999348074,
+      "response": {
+        "id": "resp_624a0dae7a0b491197f253973bf4f726",
+        "object": "response",
+        "created_at": 1791282614,
+        "status": "completed",
+        "background": false,
+        "error": null,
+        "incomplete_details": null,
+        "instructions": null,
+        "max_output_tokens": 64,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "output": [
+          {
+            "id": "msg_f049dbdf351f4a63945e1e2ba11e53f0",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "Ready.",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "parallel_tool_calls": true,
+        "previous_response_id": null,
+        "reasoning": {
+          "effort": "none",
+          "summary": null
+        },
+        "store": false,
+        "temperature": 0,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "tool_choice": "auto",
+        "tools": [],
+        "top_p": null,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 18,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 3,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 21
+        },
+        "user": null,
+        "metadata": {},
+        "completed_at": 1791282615
+      }
+    },
+    "vision_chat": {
+      "elapsed_seconds": 14.672000000020489,
+      "response": {
+        "id": "chatcmpl-b7b12cd1332a4c8493619784",
+        "object": "chat.completion",
+        "created": 1791282616,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The two shapes are a red circle and a blue square, and the text below them is STRATA140."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 280,
+          "completion_tokens": 25,
+          "total_tokens": 305,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 280,
+          "prompt_ms": 13058.4,
+          "prompt_per_token_ms": 46.637,
+          "prompt_per_second": 21.4,
+          "predicted_n": 25,
+          "predicted_ms": 637.8,
+          "predicted_per_token_ms": 25.512,
+          "predicted_per_second": 39.2,
+          "draft_n": 21,
+          "draft_n_accepted": 18
+        }
+      }
+    },
+    "vision_responses": {
+      "elapsed_seconds": 0.7650000000139698,
+      "response": {
+        "id": "resp_4641d4c07a3a438883446e02cea86f0e",
+        "object": "response",
+        "created_at": 1791282629,
+        "status": "completed",
+        "background": false,
+        "error": null,
+        "incomplete_details": null,
+        "instructions": null,
+        "max_output_tokens": 128,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "output": [
+          {
+            "id": "msg_73e87650d9b444e38d1536cb106ce85e",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "The two shapes are a red circle and a blue square, and the text below them is STRATA140.",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "parallel_tool_calls": true,
+        "previous_response_id": null,
+        "reasoning": {
+          "effort": "none",
+          "summary": null
+        },
+        "store": false,
+        "temperature": 0,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "tool_choice": "auto",
+        "tools": [],
+        "top_p": null,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 280,
+          "input_tokens_details": {
+            "cached_tokens": 273
+          },
+          "output_tokens": 25,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 305
+        },
+        "user": null,
+        "metadata": {},
+        "completed_at": 1791282630
+      }
+    }
+  },
+  "props_build_info": "Strata 0.1.40",
+  "all_checks_passed": true,
+  "pushed": false,
+  "vision_fixture": {
+    "file": "vision-smoke-test.png",
+    "size": [
+      640,
+      384
+    ],
+    "sha256": "cad77fc591e232f4c5d60c9ce7eee10ad1fd1e3b15170eb74006beffb117187d",
+    "expected": [
+      "red circle",
+      "blue square",
+      "STRATA140"
+    ]
+  },
+  "limitations": [
+    "Short text and image inference only",
+    "No fine-detail OCR or grounding evaluation",
+    "No throughput benchmark"
+  ]
+}
