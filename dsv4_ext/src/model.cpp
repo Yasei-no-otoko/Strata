@@ -938,7 +938,10 @@ struct Model::Impl {
         if (o.cpu_experts > 0 || !o.gpu) ensure_cpu_moe();
         // Keep the caller on its reserved core for the whole token. Nested pool
         // phases reuse this selection rather than issuing two OS migrations per phase.
-        auto caller_scope = cpu_moe ? cpu_moe->scoped_caller() : CpuPool::CallerScope{};
+        auto caller_scope = [&]() -> CpuPool::CallerScope {
+            if (cpu_moe) return cpu_moe->scoped_caller();
+            return {};
+        }();
         std::vector<float> e((size_t) dim), hres((size_t) hc * dim), x((size_t) dim), xn((size_t) dim);
         dequant_row(embd.type, embd.h + (size_t) token * embd.rb, dim, e.data());
         for (int j = 0; j < hc; ++j) std::memcpy(&hres[(size_t) j * dim], e.data(), (size_t) dim * 4);
