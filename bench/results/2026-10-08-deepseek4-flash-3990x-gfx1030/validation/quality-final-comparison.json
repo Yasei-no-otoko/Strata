@@ -1,0 +1,23 @@
+{
+  "positions": 15,
+  "vocabulary": 129280,
+  "reference_sha256": "47c3e264005bc706359b470b21b11fb1c801100a8111523119af51e81b93e0e0",
+  "cases": {
+    "gpu": {
+      "sha256": "753a70f4726a0f5da9c23125f5897a966932ecae1fc41ce935e1e57cd8ae2a03",
+      "finite": true,
+      "max_abs": 0.0,
+      "rms": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "argmax_agree": 15
+    },
+    "cpu": {
+      "sha256": "ba1b231b6ca26b44ae7f374d7e218a98948e31e0445b4481463067ff93b072fe",
+      "finite": true,
+      "max_abs": 5.045069694519043,
+      "rms": 0.4940868508667472,
+      "min_cosine": 0.9858345300901834,
+      "argmax_agree": 14
+    }
+  }
+}

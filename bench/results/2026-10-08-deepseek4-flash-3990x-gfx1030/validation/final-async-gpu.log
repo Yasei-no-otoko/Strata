@@ -1,0 +1,46 @@
+dsv4: HIP device 0: AMD Radeon RX 6900 XT (arch gfx1030, wave32)
+dsv4: HIP async expert staging enabled
+ok matvec type 0 (5 rows x 256)
+ok matvec type 0 (5 rows x 4096)
+ok grouped matvec type 0 groups=1 rows/group=3
+ok grouped matvec type 0 groups=8 rows/group=3
+ok matvec type 30 (5 rows x 256)
+ok matvec type 30 (5 rows x 4096)
+ok grouped matvec type 30 groups=1 rows/group=3
+ok grouped matvec type 30 groups=8 rows/group=3
+ok matvec type 8 (5 rows x 256)
+ok matvec type 8 (5 rows x 4096)
+ok grouped matvec type 8 groups=1 rows/group=3
+ok grouped matvec type 8 groups=8 rows/group=3
+ok matvec type 12 (5 rows x 256)
+ok matvec type 12 (5 rows x 4096)
+ok grouped matvec type 12 groups=1 rows/group=3
+ok grouped matvec type 12 groups=8 rows/group=3
+ok matvec type 13 (5 rows x 256)
+ok matvec type 13 (5 rows x 4096)
+ok grouped matvec type 13 groups=1 rows/group=3
+ok grouped matvec type 13 groups=8 rows/group=3
+ok matvec type 14 (5 rows x 256)
+ok matvec type 14 (5 rows x 4096)
+ok grouped matvec type 14 groups=1 rows/group=3
+ok grouped matvec type 14 groups=8 rows/group=3
+ok matvec type 18 (5 rows x 256)
+ok matvec type 18 (5 rows x 4096)
+ok grouped matvec type 18 groups=1 rows/group=3
+ok grouped matvec type 18 groups=8 rows/group=3
+ok matvec type 16 (5 rows x 256)
+ok matvec type 16 (5 rows x 4096)
+ok grouped matvec type 16 groups=1 rows/group=3
+ok grouped matvec type 16 groups=8 rows/group=3
+ok matvec type 29 (5 rows x 256)
+ok matvec type 29 (5 rows x 4096)
+ok grouped matvec type 29 groups=1 rows/group=3
+ok grouped matvec type 29 groups=8 rows/group=3
+ok matvec type 39 (5 rows x 256)
+ok matvec type 39 (5 rows x 4096)
+ok grouped matvec type 39 groups=1 rows/group=3
+ok grouped matvec type 39 groups=8 rows/group=3
+ok unsupported Q4_0 rejected without writing output
+ok MoE gate/up SwiGLU/down for resident and staged host experts
+ok shared-reference SwiGLU double-exp/cast/multiply (F32, clamped and unclamped range)
+ALL REAL GPU TESTS PASSED

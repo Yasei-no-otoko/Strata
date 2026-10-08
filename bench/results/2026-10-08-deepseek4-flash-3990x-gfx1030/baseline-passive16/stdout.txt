@@ -1,0 +1,8 @@
+prompt: 32 tokens in 31.74 s (1.01 tok/s)
+generated ids: 9641 31997 1733 223 736 37286 14 305 270 10463 9641 31997 515 71248 339 4690
+text:  rain gauge read 12 millimeters, and the north rain gauge was disconnected.
+
+At
+decode: 16 tokens in 11.53 s (1.39 tok/s)
+
+Generated 16 tokens in 11.53 s (1.39 tok/s)

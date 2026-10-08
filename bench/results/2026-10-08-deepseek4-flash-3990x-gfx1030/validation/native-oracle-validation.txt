@@ -1,0 +1,14 @@
+Native MoE activation oracle validation
+
+Mode: tiny_model.py OUTDIR --native-moe-activations writes OUTDIR-native-moe.
+The GGUF and tokens are byte-identical to default mode. Only the reference logits differ.
+
+Activation emulation: for each 32-float gate/up input block, use float32 amax, d=float32(amax/127), store d as fp16, calculate q=round-to-nearest-even(float32(x*(127/amax))), clamp q to [-127,127], then dequantize fp16(d)*q. This follows ggml 0.24.0 AVX2 quantize_row_q8_0 in ggml-cpu/arch/x86/quants.c:302-396. Down-projection activation remains full-precision F32.
+
+Validation (26x40 logits, n_predict=1, CPU, --no-qat-sim):
+- Native-mode NumPy oracle vs current native CpuMoe C++ output: max abs 7.15255737e-7, max rel 2.12950072e-5, argmax 26/26.
+- Native-mode NumPy oracle vs existing tiny-native.bin: same metrics; current C++ output is byte-identical to tiny-native.bin.
+- Default NumPy float oracle vs current float-reference C++: max abs 8.34465027e-7, argmax 26/26.
+- Native-mode vs default float oracle: max abs 0.867358208, argmax 24/26.
+
+Commands included --no-qat-sim because the oracle's QAT simulation is off.

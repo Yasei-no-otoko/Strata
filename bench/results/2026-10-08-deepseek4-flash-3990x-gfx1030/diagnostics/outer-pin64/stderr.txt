@@ -1,0 +1,45 @@
+[load    0.0s] read-only shard mappings and header checks done
+dsv4: HIP device 0: AMD Radeon RX 6900 XT (arch gfx1030, wave32)
+[load    5.7s] non-expert weights uploaded to GPU
+VRAM total:         16368 MiB
+VRAM free:           9720 MiB
+reserve:             4096 MiB
+fixed weights:          0 MiB
+KV estimate:            0 MiB
+activation:             0 MiB
+prefill buffers:        0 MiB
+MTP/checkpoint:         0 MiB
+scratch:                0 MiB
+expert budget:          0 MiB (0.0% of the 5624 MiB left after fixed costs)
+expert slots:           0 of 11008 (tiered: hit/miss)
+slots/layer:     0..0
+slot bytes:             0 MiB
+RAM expert copy:    76208 MiB
+[load    5.7s] experts copied to RAM
+expert profile: none
+experts in RAM: 0 (0.00 GiB) | VRAM slots: 0, preloaded: 0 | rest: mmap on disk
+miss LRU arena: 0 slots (0.00 GiB) | threads: 16
+device: hip | VRAM 6.13/15.98 GiB used, 9.49 GiB free (weights 6.13 GiB, scratch 0.00 GiB)
+loaded in 5.7 s (hip)
+CPU MoE build: ggml 0.24.0 (3cf03257f), compiled ISA floor AVX2+FMA+F16C, runtime available
+CPU MoE: ggml quantized activation dots, 64 persistent participants, workers on logical CPUs: 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40 42 44 46 48 50 52 54 56 58 60 62 64 66 68 70 72 74 76 78 80 82 84 86 88 90 92 94 96 98 100 102 104 106 108 110 112 114 116 118 120 122 124 126 (Windows ID = group*64 + processor)
+CPU MoE caller: scoped Windows CPU Set target 0 (-1 = unchanged)
+expert stats:
+  hits: 0
+  misses: 12126
+  hit rate: 0.00%
+  admits: 0  swaps: 0
+  RAM cache: 0 hits, 0 loads (0.00 GiB), 0 evictions
+  resident H2D: 0.000 GiB
+  host submission/CPU fallback: 14.55 s
+  GPU tail wait/readback: 0.00 s
+  staged expert H2D: 0.000 GiB
+  CPU expert evaluations: 12126
+  native quantized CPU expert evaluations: 12126
+host phase wall time (nested, not additive):
+  forward: 27.292 s
+  attention: 8.581 s
+    sparse attention: 0.331 s
+  MoE: 17.207 s
+  hyperconnections: 1.309 s
+  dense matvec round trips (inside above phases and output head): 8.710 s

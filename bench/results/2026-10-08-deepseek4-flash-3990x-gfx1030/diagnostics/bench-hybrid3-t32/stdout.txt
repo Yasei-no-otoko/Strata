@@ -1,0 +1,8 @@
+prompt: 32 tokens in 18.77 s (1.70 tok/s)
+generated ids: 9641 31997 1733 223 736 37286 14 305 270 10828 9641 31997 515 15484 339 4690
+text:  rain gauge read 12 millimeters, and the south rain gauge was replaced.
+
+At
+decode: 16 tokens in 7.36 s (2.17 tok/s)
+
+Generated 16 tokens in 7.36 s (2.17 tok/s)

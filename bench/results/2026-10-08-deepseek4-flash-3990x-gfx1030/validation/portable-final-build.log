@@ -1,0 +1,14 @@
+MSBuild のバージョン 17.14.51+25f168cee (.NET Framework)
+
+  model.cpp
+  dsv4_core.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\dsv4_core.lib
+  test_dq_traits.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\test_dq_traits.exe
+  test_ops.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\test_ops.exe
+  test_dsv4_core.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\test_dsv4_core.exe
+  test_cpu_moe.cpp
+  test_cpu_pool.cpp
+  dsv4_run_main.cpp
+  dsv4_plan.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\dsv4_plan.exe
+  test_cpu_pool.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\test_cpu_pool.exe
+  test_cpu_moe.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\test_cpu_moe.exe
+  dsv4_run.vcxproj -> C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-native-check\Release\dsv4_run.exe

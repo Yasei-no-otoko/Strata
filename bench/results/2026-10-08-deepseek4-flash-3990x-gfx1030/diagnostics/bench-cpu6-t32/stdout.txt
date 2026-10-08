@@ -1,0 +1,8 @@
+prompt: 32 tokens in 14.10 s (2.27 tok/s)
+generated ids: 9641 31997 1733 223 736 37286 14 305 270 2333 515 33322 339 4690 223 3315
+text:  rain gauge read 12 millimeters, and the power was restored.
+
+At 07
+decode: 16 tokens in 6.05 s (2.65 tok/s)
+
+Generated 16 tokens in 6.05 s (2.65 tok/s)

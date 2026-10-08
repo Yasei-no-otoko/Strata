@@ -1,0 +1,20 @@
+Internal ctest changing into directory: C:/Users/wildman/.codex/worktrees/deepseek4-flash-pr1518-check/Strata/dsv4_ext/build-hip-cpu-nobmi2
+Test project C:/Users/wildman/.codex/worktrees/deepseek4-flash-pr1518-check/Strata/dsv4_ext/build-hip-cpu-nobmi2
+    Start 1: core
+1/7 Test #1: core .............................   Passed    0.09 sec
+    Start 2: ops
+2/7 Test #2: ops ..............................   Passed    0.08 sec
+    Start 3: cpu_pool
+3/7 Test #3: cpu_pool .........................   Passed    0.06 sec
+    Start 4: cpu_moe
+4/7 Test #4: cpu_moe ..........................   Passed    0.72 sec
+    Start 5: dq_traits
+5/7 Test #5: dq_traits ........................   Passed    0.08 sec
+    Start 6: native_cpu
+6/7 Test #6: native_cpu .......................   Passed    0.07 sec
+    Start 7: gpu
+7/7 Test #7: gpu ..............................   Passed    0.79 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) =   1.93 sec

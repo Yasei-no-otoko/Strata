@@ -1,0 +1,6 @@
+strata generate: GPU 0: AMD Radeon RX 6900 XT (gfx1030)
+strata generate: HIP runtime C:\Dev\Strata\engine\amdhip64_7.dll
+strata generate: 63 expert-pool workers + the host thread
+strata generate: session is up (engine 0.1.40)
+strata serve: prompt 17 tokens = 0 reused + 17 read in 536 ms (31.7 tok/s), 2 generated in 143 ms (14.0 tok/s), drafts accepted 3 of 3, 1 checkpoints
+strata serve: decode expert cache hit rate: 47.1% (791 hits / 1679 lookups); 721 more read by the GPU over PCIe or from another GPU (30.0% of all 2400 routed)

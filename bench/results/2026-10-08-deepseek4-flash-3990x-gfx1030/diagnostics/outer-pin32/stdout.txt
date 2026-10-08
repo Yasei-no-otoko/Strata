@@ -1,0 +1,6 @@
+prompt: 32 tokens in 15.73 s (2.03 tok/s)
+generated ids: 9641 31997 1733 223 736 37286 14 305 270 15106 9641 31997 1733 223 736 37286
+text:  rain gauge read 12 millimeters, and the west rain gauge read 12 millimeters
+decode: 16 tokens in 6.72 s (2.38 tok/s)
+
+Generated 16 tokens in 6.72 s (2.38 tok/s)

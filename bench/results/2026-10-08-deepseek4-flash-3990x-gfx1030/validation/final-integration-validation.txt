@@ -1,0 +1,10 @@
+Final integration validation
+
+Source base: e5a62c9; includes the pending minimal model.cpp CallerScope portability lambda patch. Existing HIP build was incrementally rebuilt for dsv4_run and test_gpu.
+
+- HIP GPU test with DSV4_HIP_ASYNC_STAGE=1: PASS on AMD Radeon RX 6900 XT (gfx1030, wave32). All supported quant/grouped matvecs, resident/staged MoE and reference shared SwiGLU test passed.
+- Native tiny 26x40 logits (--cpu-moe-kernel native, --no-qat-sim): PASS; NumPy native-activation oracle max absolute error 7.15255737e-7, argmax 26/26; current C++ output byte-identical to previous tiny-native.bin.
+- Float-reference tiny 26x40 logits (--cpu-moe-kernel reference, --no-qat-sim): PASS; original NumPy float oracle max absolute error 8.34465027e-7, argmax 26/26; current C++ output byte-identical to previous tiny-reference.bin.
+- Serve protocol: PASS (READY, complete GEN, partial STOP without newline, continued progress, cancellation, next GEN, QUIT).
+
+Raw validation logs: final-async-gpu.log, final-serve-protocol.log, final-tiny-logit-comparison.txt. Incremental build output was successful: dsv4_run and test_gpu linked.

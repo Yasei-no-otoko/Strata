@@ -1,0 +1,16 @@
+Internal ctest changing into directory: C:/Users/wildman/.codex/worktrees/deepseek4-flash-pr1518-check/Strata/dsv4_ext/build-native-check
+Test project C:/Users/wildman/.codex/worktrees/deepseek4-flash-pr1518-check/Strata/dsv4_ext/build-native-check
+    Start 1: core
+1/5 Test #1: core .............................   Passed    0.08 sec
+    Start 2: ops
+2/5 Test #2: ops ..............................   Passed    0.09 sec
+    Start 3: cpu_pool
+3/5 Test #3: cpu_pool .........................   Passed    0.14 sec
+    Start 4: cpu_moe
+4/5 Test #4: cpu_moe ..........................   Passed    0.83 sec
+    Start 5: dq_traits
+5/5 Test #5: dq_traits ........................   Passed    0.08 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Total Test time (real) =   1.24 sec

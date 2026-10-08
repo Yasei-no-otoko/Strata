@@ -1,0 +1,4 @@
+Final tiny-logit integration comparisons (float32; 26 positions x 40 vocab)
+final float: oracle-vs-current max_abs=8.34465027e-07, max_rel=0.00106960698, argmax=26/26; current-vs-prior binary identical=True
+final native moe: oracle-vs-current max_abs=7.15255737e-07, max_rel=2.12950072e-05, argmax=26/26; current-vs-prior binary identical=True
+Both current C++ outputs were produced from the e5a62c9 rebuilt dsv4_run with --cpu, --no-qat-sim, 4 CPU participants, n_predict=1.

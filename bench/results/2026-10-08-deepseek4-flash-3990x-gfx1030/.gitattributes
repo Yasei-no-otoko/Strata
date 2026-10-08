@@ -1,0 +1,3 @@
+# Preserve captured model output, including Markdown hard breaks and original line endings.
+**/stdout.txt -text -whitespace
+**/stderr.txt -text -whitespace

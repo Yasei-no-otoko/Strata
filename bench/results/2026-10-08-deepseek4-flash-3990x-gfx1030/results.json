@@ -1,0 +1,78 @@
+{
+  "prompt_fixture_sha256": "c773455ed7b77c46bead9e2624baa0c2ab294d0a3e2dd13f34fc18ca0c6aa8bd",
+  "input_tokens": 128,
+  "cases": {
+    "final128-baseline": {
+      "executable_sha256": "9688fad315fd89b3ed73c9c599a0a9d9ec67117b0304a50690d71e8f9a4f0b35",
+      "prompt_seconds": 112.45,
+      "prompt_tokens_per_second": 1.14,
+      "decode_seconds": 91.52,
+      "decode_tokens_per_second": 1.4,
+      "wall_seconds_including_load_and_exit": 223.605,
+      "peak_process_working_set_gib": 53.28429412841797,
+      "minimum_system_available_physical_gib": 32.096126556396484,
+      "generated_ids_equal_baseline": true,
+      "generated_ids_sha256": "1d98cd8ae3ac7d37a173daa495a18b39a4e75be996059853ec9989a873f3e3f1",
+      "runtime_environment": {
+        "OMP_NUM_THREADS": "16",
+        "OMP_WAIT_POLICY": "PASSIVE",
+        "OMP_PROC_BIND": null,
+        "OMP_PLACES": null,
+        "KMP_BLOCKTIME": "0",
+        "KMP_AFFINITY": null,
+        "KMP_HW_SUBSET": null,
+        "DSV4_HIP_ASYNC_STAGE": "0"
+      }
+    },
+    "final128-hip": {
+      "executable_sha256": "28faf81f2e5b4f90f8a97c34ac994385540bae576223029f3954a1d7af183eab",
+      "prompt_seconds": 70.87,
+      "prompt_tokens_per_second": 1.81,
+      "decode_seconds": 62.6,
+      "decode_tokens_per_second": 2.04,
+      "wall_seconds_including_load_and_exit": 153.239,
+      "peak_process_working_set_gib": 53.28494644165039,
+      "minimum_system_available_physical_gib": 32.73517990112305,
+      "generated_ids_equal_baseline": true,
+      "generated_ids_sha256": "1d98cd8ae3ac7d37a173daa495a18b39a4e75be996059853ec9989a873f3e3f1",
+      "runtime_environment": {
+        "OMP_NUM_THREADS": "16",
+        "OMP_WAIT_POLICY": "PASSIVE",
+        "OMP_PROC_BIND": null,
+        "OMP_PLACES": null,
+        "KMP_BLOCKTIME": "0",
+        "KMP_AFFINITY": null,
+        "KMP_HW_SUBSET": null,
+        "DSV4_HIP_ASYNC_STAGE": "0"
+      },
+      "cpu_expert_evaluations": 0,
+      "native_cpu_expert_evaluations": 0,
+      "staged_expert_h2d_gib": 436.364
+    },
+    "final128-native32": {
+      "executable_sha256": "28faf81f2e5b4f90f8a97c34ac994385540bae576223029f3954a1d7af183eab",
+      "prompt_seconds": 54.27,
+      "prompt_tokens_per_second": 2.36,
+      "decode_seconds": 56.41,
+      "decode_tokens_per_second": 2.27,
+      "wall_seconds_including_load_and_exit": 130.166,
+      "peak_process_working_set_gib": 53.13420486450195,
+      "minimum_system_available_physical_gib": 32.09319305419922,
+      "generated_ids_equal_baseline": false,
+      "generated_ids_sha256": "6bad9523c6ddaedc11567dcf85d36a45d3bdfa798c362f815aedc468da8c4926",
+      "runtime_environment": {
+        "OMP_NUM_THREADS": "16",
+        "OMP_WAIT_POLICY": "PASSIVE",
+        "OMP_PROC_BIND": null,
+        "OMP_PLACES": null,
+        "KMP_BLOCKTIME": "0",
+        "KMP_AFFINITY": null,
+        "KMP_HW_SUBSET": null,
+        "DSV4_HIP_ASYNC_STAGE": "0"
+      },
+      "cpu_expert_evaluations": 65790,
+      "native_cpu_expert_evaluations": 65790,
+      "staged_expert_h2d_gib": 0.0
+    }
+  }
+}

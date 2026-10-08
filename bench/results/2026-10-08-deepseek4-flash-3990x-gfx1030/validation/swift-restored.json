@@ -1,0 +1,22 @@
+{
+  "verified_at": "2026-10-09T00:37:35.4230751+09:00",
+  "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+  "loaded": true,
+  "engine": "0.1.40",
+  "gpu": null,
+  "configuration_sha256_before": "3213F66BD950DA1376CEB56AF91C37BE95F402B1F228D124C0DA9C6ED22292C8",
+  "configuration_sha256_after": "3213F66BD950DA1376CEB56AF91C37BE95F402B1F228D124C0DA9C6ED22292C8",
+  "configuration_matches_preserved_baseline": true,
+  "configuration_unchanged": true,
+  "chat_model": "huihui-swift-1.5-abliterated-iq3_xxs",
+  "chat_content": "OK",
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 17,
+    "completion_tokens": 2,
+    "total_tokens": 19,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  }
+}
