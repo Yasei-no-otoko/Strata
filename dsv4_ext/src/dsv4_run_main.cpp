@@ -48,6 +48,14 @@ static void usage() {
         "  --dump-logits F           write float32 logits of every processed token\n"
         "  --selfcheck               dequantisation statistics of real tensors, then exit if no prompt is given\n"
         "  --quiet                   no startup report on stderr (serve/server.py keeps its own log)\n"
+        "  --profile-timing          print host wall-clock phase totals (nested fields overlap)\n"
+        "  --no-grouped-attention    compare with separate attention output-projection transfers\n"
+        "  --no-fused-shared         compare with host shared-expert activations\n"
+        "  --cpu-experts N           evaluate the last N routed experts on the CPU (0 = device staging)\n"
+        "  --cpu-threads N           persistent CPU MoE participants (0 = follow --threads)\n"
+        "  --cpu-moe-kernel auto|native|reference  native uses ggml activation quantization\n"
+        "  --no-cpu-pin              disable physical-core affinity for CPU expert workers\n"
+        "  --no-cpu-host-pin         disable scoped Windows CPU Set selection for the caller\n"
         "  --pcie-frac F             not implemented (must be 0)");
 }
 
@@ -90,6 +98,14 @@ int main(int argc, char** argv) {
         else if (a == "--no-qat-sim") o.qat_sim = false;
         else if (a == "--max-layers") o.max_layers = std::atoi(next());
         else if (a == "--quiet") o.verbose = false;
+        else if (a == "--profile-timing") o.profile_timing = true;
+        else if (a == "--no-grouped-attention") o.grouped_attention = false;
+        else if (a == "--no-fused-shared") o.fused_shared = false;
+        else if (a == "--cpu-experts") o.cpu_experts = std::atoi(next());
+        else if (a == "--cpu-threads") o.cpu_threads = std::atoi(next());
+        else if (a == "--cpu-moe-kernel") o.cpu_moe_kernel = next();
+        else if (a == "--no-cpu-pin") o.cpu_pin = false;
+        else if (a == "--no-cpu-host-pin") o.cpu_host_pin = false;
         else if (a == "--temperature") so.temperature = (float) std::atof(next());
         else if (a == "--top-p") so.top_p = (float) std::atof(next());
         else if (a == "--top-k") so.top_k = std::atoi(next());
@@ -178,11 +194,17 @@ int main(int argc, char** argv) {
     std::printf("decode: %d tokens in %.2f s (%.2f tok/s)\n", produced, gen_s, produced / std::max(gen_s, 1e-9));
     const Stats& s = m.stats;
     const double tot = (double) (s.hits + s.misses);
-    std::fprintf(stderr, "expert stats:\n  hits: %llu\n  misses: %llu\n  hit rate: %.2f%%\n  admits: %llu  swaps: %llu\n  RAM cache: %llu hits, %llu loads (%.2f GiB), %llu evictions\n  H2D: %.3f GiB\n  CPU miss time: %.2f s\n  GPU hit wait: %.2f s\n",
+    std::fprintf(stderr, "expert stats:\n  hits: %llu\n  misses: %llu\n  hit rate: %.2f%%\n  admits: %llu  swaps: %llu\n  RAM cache: %llu hits, %llu loads (%.2f GiB), %llu evictions\n  resident H2D: %.3f GiB\n  host submission/CPU fallback: %.2f s\n  GPU tail wait/readback: %.2f s\n",
                  (unsigned long long) s.hits, (unsigned long long) s.misses, tot > 0 ? 100.0 * (double) s.hits / tot : 0.0, (unsigned long long) s.admits,
                  (unsigned long long) s.swaps, (unsigned long long) s.cache_hits, (unsigned long long) s.cache_loads,
                  s.cache_bytes / 1073741824.0, (unsigned long long) s.cache_evictions,
                  s.h2d_bytes / 1073741824.0, s.cpu_miss_s, s.gpu_hit_s);
+    std::fprintf(stderr, "  staged expert H2D: %.3f GiB\n  CPU expert evaluations: %llu\n",
+                 s.staged_bytes / 1073741824.0, (unsigned long long) s.cpu_experts);
+    std::fprintf(stderr, "  native quantized CPU expert evaluations: %llu\n", (unsigned long long)s.native_cpu_experts);
+    if (o.profile_timing)
+        std::fprintf(stderr, "host phase wall time (nested, not additive):\n  forward: %.3f s\n  attention: %.3f s\n    sparse attention: %.3f s\n  MoE: %.3f s\n  hyperconnections: %.3f s\n  dense matvec round trips (inside above phases and output head): %.3f s\n",
+                     s.total_s, s.attention_s, s.sparse_attention_s, s.moe_s, s.hyper_s, s.dense_mv_s);
     if (tr) std::fclose(tr);
     if (lf) std::fclose(lf);
     if (!o.profile_out.empty()) { if (!m.save_profile(err)) std::fprintf(stderr, "profile save failed: %s\n", err.c_str()); else std::fprintf(stderr, "profile saved: %s\n", o.profile_out.c_str()); }

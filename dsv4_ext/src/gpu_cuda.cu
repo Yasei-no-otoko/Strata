@@ -24,6 +24,8 @@
 #include "dsv4/iq_tables.hpp"
 
 #include <cstdio>
+#include <climits>
+#include <cstdlib>
 #include <cstring>
 
 #include "dsv4/device_runtime.hpp"
@@ -56,9 +58,37 @@ float* g_down_acc = nullptr;   // kMaxHit * kMaxDim floats: the down projection 
 uint8_t* g_stage = nullptr;
 size_t g_stage_bytes = 0;
 uint8_t* g_stage_pin = nullptr;
+bool g_async_stage = false;
+cudaStream_t g_stage_stream = nullptr;
+cudaEvent_t g_stage_copied[kMaxHit] = {};
+cudaEvent_t g_stage_consumed[kMaxHit] = {};
+bool g_stage_copied_valid[kMaxHit] = {};
+bool g_stage_consumed_valid[kMaxHit] = {};
+size_t g_stage_last_bpe = 0;
 
 constexpr int64_t kMaxDim = 16384;
 constexpr int kThreads = 256;
+
+void clear_staging_resources() {
+    if (g_stage_pin && g_ready)
+        check(cudaDeviceSynchronize(), "staging cleanup synchronize");
+    for (int k = 0; k < kMaxHit; ++k) {
+        if (g_stage_copied[k]) check(cudaEventDestroy(g_stage_copied[k]), "destroy stage-copy event");
+        if (g_stage_consumed[k]) check(cudaEventDestroy(g_stage_consumed[k]), "destroy stage-compute event");
+        g_stage_copied[k] = g_stage_consumed[k] = nullptr;
+        g_stage_copied_valid[k] = g_stage_consumed_valid[k] = false;
+    }
+    if (g_stage_stream) check(cudaStreamDestroy(g_stage_stream), "destroy stage-copy stream");
+    g_stage_stream = nullptr;
+    g_async_stage = false;
+    g_stage_last_bpe = 0;
+    if (g_stage_pin) {
+        check(cudaFreeHost(g_stage_pin), "free pinned staging buffer");
+        g_stage_pin = nullptr;
+    }
+    g_stage = nullptr;
+    g_stage_bytes = 0;
+}
 
 // ---------------------------------------------------------------- codebooks on device
 // __constant__ because a warp reads the same grid entry with the same index nearly always, which is exactly
@@ -91,10 +121,10 @@ namespace {
 
 // ---------------------------------------------------------------- matvec kernel
 // One block per output row, kThreads threads: each thread walks a strided slice of the row, decoding the
-// weights on the fly (the weights are the traffic here, not the activations), then a tree reduction writes
-// y[r]. rows is gridDim.x, so the 129280-row output projection is a single launch.
+// weights on the fly (the weights are the traffic here, not the activations). rows is gridDim.x, so the
+// 129280-row output projection is a single launch.
 template <class Tr>
-__global__ void matvec_kernel(const uint8_t* __restrict__ W, int64_t rows, int in, int rb,
+__global__ void matvec_kernel(const uint8_t* __restrict__ W, int64_t rows, int64_t rows_per_group, int in, int rb,
                               const float* __restrict__ x, float* __restrict__ y) {
     const int64_t r = blockIdx.x;
     if (r >= rows) return;
@@ -106,29 +136,64 @@ __global__ void matvec_kernel(const uint8_t* __restrict__ W, int64_t rows, int i
         return;
     }
     const uint8_t* w = W + (size_t) r * (size_t) rb;
+    const float* xg = x + (size_t)(r / rows_per_group) * (size_t)in;
     float acc = 0.f;
-    for (int e = threadIdx.x; e < in; e += kThreads) acc += Tr::at(w, e) * x[e];
+    for (int e = threadIdx.x; e < in; e += kThreads) acc += Tr::at(w, e) * xg[e];
     __shared__ float red[kThreads];
     red[threadIdx.x] = acc;
     __syncthreads();
+#ifdef DSV4_USE_HIP
+    // gfx1030 is wave32. Keep the original balanced-tree association exactly: shared-memory steps
+    // combine across waves first (128, 64, 32), then wave shuffles do the original 16..1 steps in
+    // lane zero's tree. This removes five CTA barriers without changing the summation order.
+    const int wave = (int)warpSize;
+    for (int s = kThreads / 2; s >= wave; s >>= 1) {
+        if (threadIdx.x < s) red[threadIdx.x] += red[threadIdx.x + s];
+        __syncthreads();
+    }
+    if (threadIdx.x < wave) {
+        float total = red[threadIdx.x];
+        const int lane = (int)threadIdx.x;
+        for (int offset = wave / 2; offset > 0; offset >>= 1) {
+            // Every lane in the first wave must participate in the shuffle. Only the lower half
+            // consumes the partner, matching the original tree's active-lane additions.
+#ifdef DSV4_USE_HIP
+            const float other = __shfl_down(total, offset, wave);
+#else
+            const float other = __shfl_down_sync(0xffffffffu, total, offset, wave);
+#endif
+            if (lane < offset) total += other;
+        }
+        if (lane == 0) y[r] = total;
+    }
+#else
     #pragma unroll
     for (int s = kThreads / 2; s > 0; s >>= 1) {
         if (threadIdx.x < s) red[threadIdx.x] += red[threadIdx.x + s];
         __syncthreads();
     }
     if (threadIdx.x == 0) y[r] = red[0];
+#endif
 }
 
 // ---------------------------------------------------------------- MoE kernels
 // a = w_k * swiglu_clamped(g, u, limit). The routing weight is folded in here so the down projection needs
 // no scaling pass of its own. w_k is passed BY VALUE: p.w is a host array and must never be read here.
 __global__ void swiglu_kernel(const float* __restrict__ g, const float* __restrict__ u, float* __restrict__ a,
-                              int64_t n, float limit, float w_k) {
+                              int64_t n, float limit, float w_k, bool reference_activation) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
     float xa = g[i], ub = u[i];
     if (limit > 0.f) { xa = fminf(xa, limit); ub = fminf(fmaxf(ub, -limit), limit); }
-    a[i] = w_k * (xa / (1.f + expf(-xa)) * ub);
+    if (reference_activation) {
+        // Preserve src/ops.cpp ordering for the shared expert: double exp/sigmoid, cast
+        // sigmoid to float, multiply by up, then apply the (shared=1) expert weight.
+        const float sigmoid = (float)(double(xa) / (1.0 + exp(-double(xa))));
+        const float activated = sigmoid * ub;
+        a[i] = activated * w_k;
+    } else {
+        a[i] = w_k * (xa / (1.f + expf(-xa)) * ub);
+    }
 }
 
 // d_y = sum_k tmp[k] in a fixed order: deterministic, and cheap (dim floats).
@@ -142,14 +207,18 @@ __global__ void sum_rows_kernel(const float* __restrict__ tmp, int n, int64_t di
 
 // ---------------------------------------------------------------- dispatch
 template <class Tr>
-bool launch_mv(uint32_t type, const uint8_t* W, int64_t rows, int64_t in, const float* d_x, float* d_y) {
+bool launch_mv(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
+               const float* d_x, float* d_y) {
     const size_t rb = row_bytes(type, in);
-    if (!rb || rows <= 0 || in <= 0 || in > (1 << 30)) return false;
+    if (!rb || groups <= 0 || rows_per_group <= 0 || in <= 0 || in > (1 << 30) ||
+        groups > INT64_MAX / rows_per_group) return false;
+    const int64_t rows = groups * rows_per_group;
+    if ((uint64_t)rows > UINT_MAX) return false;
     // Checked HERE, on the host, before anything is launched: row_bytes() is the single source of truth
     // shared with dequant.cpp, and if a trait's block size disagrees with the type it claims to decode,
     // the honest answer is false ("wrote nothing, use the host") - not a row of zeros on the device.
     if (in % Tr::BE != 0 || (int64_t)(in / Tr::BE) * (int64_t) Tr::BB != (int64_t) rb) return false;
-    matvec_kernel<Tr><<<(unsigned) rows, kThreads>>>(W, rows, (int) in, (int) rb, d_x, d_y);
+    matvec_kernel<Tr><<<(unsigned) rows, kThreads>>>(W, rows, rows_per_group, (int) in, (int) rb, d_x, d_y);
     return check(cudaGetLastError(), "matvec launch");
 }
 
@@ -217,7 +286,11 @@ void* alloc(size_t n) {
     return p;
 }
 
-void release(void* p) { if (p) check(cudaFree(p), "free"); }  // g_used is never decreased: the pool is freed with the model
+void release(void* p) {
+    if (!p) return;
+    if (p == g_stage) clear_staging_resources();
+    check(cudaFree(p), "free");
+}  // g_used is never decreased: the pool is freed with the model
 
 void mem_info(size_t* free_bytes, size_t* total_bytes) {
     size_t f = 0, t = 0;
@@ -235,13 +308,59 @@ bool experts_supported(uint32_t g, uint32_t u, uint32_t d) {
     return g_ready && !g_cuda_err && supported(g) && supported(u) && supported(d);
 }
 
+namespace {
+
+void configure_async_staging() {
+#ifdef DSV4_USE_HIP
+    const char* enabled = std::getenv("DSV4_HIP_ASYNC_STAGE");
+    if (!enabled || std::strcmp(enabled, "1") != 0) return;
+
+    cudaError_t status = cudaStreamCreateWithFlags(&g_stage_stream, cudaStreamNonBlocking);
+    if (status != cudaSuccess) {
+        std::fprintf(stderr, "dsv4: async HIP staging unavailable (%s); using ordered staging\n", cudaGetErrorString(status));
+        g_stage_stream = nullptr;
+        return;
+    }
+    int events_created = 0;
+    for (int k = 0; k < kMaxHit; ++k) {
+        status = cudaEventCreateWithFlags(&g_stage_copied[k], cudaEventDisableTiming);
+        if (status != cudaSuccess) break;
+        status = cudaEventCreateWithFlags(&g_stage_consumed[k], cudaEventDisableTiming);
+        if (status != cudaSuccess) {
+            (void)cudaEventDestroy(g_stage_copied[k]);
+            g_stage_copied[k] = nullptr;
+            break;
+        }
+        ++events_created;
+    }
+    if (events_created != kMaxHit) {
+        for (int k = 0; k < events_created; ++k) {
+            (void)cudaEventDestroy(g_stage_copied[k]);
+            (void)cudaEventDestroy(g_stage_consumed[k]);
+            g_stage_copied[k] = g_stage_consumed[k] = nullptr;
+        }
+        (void)cudaStreamDestroy(g_stage_stream);
+        g_stage_stream = nullptr;
+        std::fprintf(stderr, "dsv4: async HIP staging event creation failed (%s); using ordered staging\n",
+                     cudaGetErrorString(status));
+        return;
+    }
+    g_async_stage = true;
+    std::fprintf(stderr, "dsv4: HIP async expert staging enabled\n");
+#endif
+}
+
+}  // namespace
+
 bool staging(uint8_t* device_pool, size_t bytes) {
     if (!g_ready || g_cuda_err || !device_pool || bytes == 0) return false;
+    if (g_stage || g_stage_pin || g_stage_stream) clear_staging_resources();
     void* pin = nullptr;
     if (!check(cudaHostAlloc(&pin, bytes, cudaHostAllocDefault), "pinned staging buffer")) return false;
     g_stage = device_pool;
     g_stage_bytes = bytes;
     g_stage_pin = (uint8_t*) pin;
+    configure_async_staging();
     return true;
 }
 
@@ -259,16 +378,34 @@ void d2h(void* dst, const void* src, size_t bytes) {
 bool matvec(uint32_t type, const uint8_t* W, int64_t rows, int64_t in, const float* d_x, float* d_y) {
     if (!g_ready || g_cuda_err || !supported(type)) return false;
     switch (type) {
-        case T_F32:     return launch_mv<dqt::F32T>(type, W, rows, in, d_x, d_y);
-        case T_BF16:    return launch_mv<dqt::BF16T>(type, W, rows, in, d_x, d_y);
-        case T_Q8_0:    return launch_mv<dqt::Q8_0T>(type, W, rows, in, d_x, d_y);
-        case T_Q4_K:    return launch_mv<dqt::Q4_KT>(type, W, rows, in, d_x, d_y);
-        case T_Q5_K:    return launch_mv<dqt::Q5_KT>(type, W, rows, in, d_x, d_y);
-        case T_Q6_K:    return launch_mv<dqt::Q6_KT>(type, W, rows, in, d_x, d_y);
-        case T_IQ3_XXS: return launch_mv<dqt::IQ3_XXST>(type, W, rows, in, d_x, d_y);
-        case T_IQ2_XXS: return launch_mv<dqt::IQ2_XXST>(type, W, rows, in, d_x, d_y);
-        case T_IQ1_M:   return launch_mv<dqt::IQ1_MT>(type, W, rows, in, d_x, d_y);
-        case T_MXFP4:   return launch_mv<dqt::MXFP4T>(type, W, rows, in, d_x, d_y);
+        case T_F32:     return launch_mv<dqt::F32T>(type, W, 1, rows, in, d_x, d_y);
+        case T_BF16:    return launch_mv<dqt::BF16T>(type, W, 1, rows, in, d_x, d_y);
+        case T_Q8_0:    return launch_mv<dqt::Q8_0T>(type, W, 1, rows, in, d_x, d_y);
+        case T_Q4_K:    return launch_mv<dqt::Q4_KT>(type, W, 1, rows, in, d_x, d_y);
+        case T_Q5_K:    return launch_mv<dqt::Q5_KT>(type, W, 1, rows, in, d_x, d_y);
+        case T_Q6_K:    return launch_mv<dqt::Q6_KT>(type, W, 1, rows, in, d_x, d_y);
+        case T_IQ3_XXS: return launch_mv<dqt::IQ3_XXST>(type, W, 1, rows, in, d_x, d_y);
+        case T_IQ2_XXS: return launch_mv<dqt::IQ2_XXST>(type, W, 1, rows, in, d_x, d_y);
+        case T_IQ1_M:   return launch_mv<dqt::IQ1_MT>(type, W, 1, rows, in, d_x, d_y);
+        case T_MXFP4:   return launch_mv<dqt::MXFP4T>(type, W, 1, rows, in, d_x, d_y);
+        default: return false;
+    }
+}
+
+bool matvec_grouped(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
+                    const float* d_x, float* d_y) {
+    if (!g_ready || g_cuda_err || !supported(type)) return false;
+    switch (type) {
+        case T_F32:     return launch_mv<dqt::F32T>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_BF16:    return launch_mv<dqt::BF16T>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_Q8_0:    return launch_mv<dqt::Q8_0T>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_Q4_K:    return launch_mv<dqt::Q4_KT>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_Q5_K:    return launch_mv<dqt::Q5_KT>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_Q6_K:    return launch_mv<dqt::Q6_KT>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_IQ3_XXS: return launch_mv<dqt::IQ3_XXST>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_IQ2_XXS: return launch_mv<dqt::IQ2_XXST>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_IQ1_M:   return launch_mv<dqt::IQ1_MT>(type, W, groups, rows_per_group, in, d_x, d_y);
+        case T_MXFP4:   return launch_mv<dqt::MXFP4T>(type, W, groups, rows_per_group, in, d_x, d_y);
         default: return false;
     }
 }
@@ -282,12 +419,15 @@ bool experts_hit(const ExpPtrs& p, uint32_t type_g, uint32_t type_u, uint32_t ty
 
     const int nk = p.n < kMaxHit ? p.n : kMaxHit;
 
-    // Resolve every expert to a DEVICE pointer first. A host expert is staged into the pool: the
-    // copies are queued on the same stream as the kernels below, so the transfer of expert k+1
-    // overlaps the matvecs of expert k.
+    // Resolve and validate every expert before enqueueing work. Host experts use a distinct pinned
+    // segment per slot so the CPU can fill expert k+1 while the default stream computes expert k.
+    // H2D and kernels are still ordered on that stream; this overlaps host staging memcpy with device
+    // compute without claiming that the transfers themselves overlap the kernels.
     uint8_t* gp[kMaxHit];
     uint8_t* gu[kMaxHit];
     uint8_t* gd[kMaxHit];
+    bool host_stage[kMaxHit] = {};
+    bool has_host_stage = false;
     const size_t bg = row_bytes(type_g, dim) * (size_t) ff;
     const size_t bu = row_bytes(type_u, dim) * (size_t) ff;
     const size_t bd = row_bytes(type_d, ff) * (size_t) dim;
@@ -296,29 +436,69 @@ bool experts_hit(const ExpPtrs& p, uint32_t type_g, uint32_t type_u, uint32_t ty
         gp[k] = p.gate[k];
         gu[k] = p.up[k];
         gd[k] = p.down[k];
-        if (gp[k]) continue;
+        if (gp[k] || gu[k] || gd[k]) {
+            if (!gp[k] || !gu[k] || !gd[k]) return false;
+            continue;
+        }
         if (!p.hg[k] || !p.hu[k] || !p.hd[k]) return false;
         if (p.bpe < bg + bu + bd || (size_t) (k + 1) * p.bpe > g_stage_bytes) return false;
         uint8_t* dst = g_stage + (size_t) k * p.bpe;
-        uint8_t* pin = g_stage_pin + (size_t) k * p.bpe;
-        std::memcpy(pin, p.hg[k], bg);
-        std::memcpy(pin + bg, p.hu[k], bu);
-        std::memcpy(pin + bg + bu, p.hd[k], bd);
-        if (!check(cudaMemcpyAsync(dst, pin, bg + bu + bd, cudaMemcpyHostToDevice), "stage H2D")) return false;
         gp[k] = dst;
         gu[k] = dst + bg;
         gd[k] = dst + bg + bu;
+        host_stage[k] = true;
+        has_host_stage = true;
+    }
+
+    if (g_async_stage && has_host_stage) {
+        // Layer bpe can change between consecutive experts_hit calls. Their k*bpe ranges can then
+        // overlap different prior slots, so fence every prior reader/copy before changing strides.
+        if (g_stage_last_bpe != 0 && g_stage_last_bpe != p.bpe) {
+            for (int k = 0; k < kMaxHit; ++k) {
+                if (g_stage_copied_valid[k] &&
+                    !check(cudaEventSynchronize(g_stage_copied[k]), "wait copies before stage-stride change")) return false;
+            }
+            for (int k = 0; k < kMaxHit; ++k) {
+                if (g_stage_consumed_valid[k] &&
+                    !check(cudaStreamWaitEvent(g_stage_stream, g_stage_consumed[k], 0), "wait compute before stage-stride change")) return false;
+            }
+        }
+        g_stage_last_bpe = p.bpe;
     }
 
     for (int k = 0; k < nk; ++k) {
+        if (host_stage[k]) {
+            uint8_t* pin = g_stage_pin + (size_t) k * p.bpe;
+            if (g_async_stage) {
+                // The pinned source and device slot are recycled on later tokens. Do not overwrite
+                // either until its previous asynchronous reader has finished.
+                if (g_stage_copied_valid[k] && !check(cudaEventSynchronize(g_stage_copied[k]), "wait prior stage copy")) return false;
+                if (g_stage_consumed_valid[k] &&
+                    !check(cudaStreamWaitEvent(g_stage_stream, g_stage_consumed[k], 0), "wait prior stage compute")) return false;
+            }
+            std::memcpy(pin, p.hg[k], bg);
+            std::memcpy(pin + bg, p.hu[k], bu);
+            std::memcpy(pin + bg + bu, p.hd[k], bd);
+            const cudaStream_t copy_stream = g_async_stage ? g_stage_stream : nullptr;
+            if (!check(cudaMemcpyAsync(gp[k], pin, bg + bu + bd, cudaMemcpyHostToDevice, copy_stream), "stage H2D")) return false;
+            if (g_async_stage) {
+                if (!check(cudaEventRecord(g_stage_copied[k], g_stage_stream), "record stage copy")) return false;
+                g_stage_copied_valid[k] = true;
+                if (!check(cudaStreamWaitEvent(nullptr, g_stage_copied[k], 0), "wait stage copy")) return false;
+            }
+        }
         if (!matvec(type_g, gp[k], ff, dim, d_x, d_g + (size_t) k * ff)) return false;
         if (!matvec(type_u, gu[k], ff, dim, d_x, d_u + (size_t) k * ff)) return false;
         swiglu_kernel<<<(unsigned) ((ff + 255) / 256), 256>>>(d_g + (size_t) k * ff, d_u + (size_t) k * ff,
-                                                              d_a + (size_t) k * ff, ff, swiglu_limit, p.w[k]);
+                                                              d_a + (size_t) k * ff, ff, swiglu_limit, p.w[k],
+                                                              p.reference_activation);
         if (!check(cudaGetLastError(), "swiglu launch")) return false;
-    }
-    for (int k = 0; k < nk; ++k)
         if (!matvec(type_d, gd[k], dim, ff, d_a + (size_t) k * ff, g_down_acc + (size_t) k * dim)) return false;
+        if (host_stage[k] && g_async_stage) {
+            if (!check(cudaEventRecord(g_stage_consumed[k], nullptr), "record stage compute")) return false;
+            g_stage_consumed_valid[k] = true;
+        }
+    }
 
     sum_rows_kernel<<<(unsigned) ((dim + 255) / 256), 256>>>(g_down_acc, nk, dim, d_y);
     return check(cudaGetLastError(), "sum_rows launch");

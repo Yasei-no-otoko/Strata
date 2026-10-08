@@ -79,6 +79,19 @@ bool matvec(uint32_t type, const uint8_t* W, int64_t rows, int64_t in, const flo
     return true;
 }
 
+bool matvec_grouped(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
+                    const float* d_x, float* d_y) {
+    if (groups <= 0 || rows_per_group <= 0 || in <= 0 || groups > INT64_MAX / rows_per_group ||
+        !type_supported(type)) return false;
+    const size_t rb = row_bytes(type, in);
+    if (!rb) return false;
+    for (int64_t group = 0; group < groups; ++group) {
+        if (!matvec(type, W + (size_t)group * (size_t)rows_per_group * rb, rows_per_group, in,
+                    d_x + (size_t)group * (size_t)in, d_y + (size_t)group * (size_t)rows_per_group)) return false;
+    }
+    return true;
+}
+
 bool experts_hit(const ExpPtrs& p, uint32_t type_g, uint32_t type_u, uint32_t type_d, int64_t ff, int64_t dim,
                  float swiglu_limit, const float* d_x, float* d_g, float* d_u, float* d_a, float* d_y) {
     if (p.n <= 0) return true;

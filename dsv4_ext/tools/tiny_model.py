@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Builds a tiny DeepSeek-V4-shaped GGUF (same tensor names as the real UD-IQ1_M file) with random weights and runs a
 float64 numpy forward (decode path of the official model.py) to produce reference logits.
-  python3 tests/tiny_model.py OUTDIR      ->  OUTDIR/tiny.gguf, OUTDIR/ref_logits.bin, OUTDIR/tokens.txt
-QAT activation simulation is OFF in the reference: run dsv4_run with --no-qat-sim to compare."""
+  python3 tools/tiny_model.py OUTDIR [--native-moe-activations]
+      -> OUTDIR/tiny.gguf, OUTDIR/ref_logits.bin, OUTDIR/tokens.txt
+         native mode writes instead to OUTDIR-native-moe/ and quantizes only routed expert
+         gate/up inputs as ggml-cpu Q8_0 vec-dot activations; down inputs remain F32.
+QAT activation simulation is OFF in the default oracle: run dsv4_run with --no-qat-sim to compare."""
 import math, os, struct, sys
 import numpy as np
 
@@ -48,6 +51,24 @@ def q8_0(w):  # returns (raw bytes, dequantised float64 array as the C++ will se
         q = np.clip(np.rint(blk / dd), -127, 127).astype(np.int8) if dd > 0 else np.zeros(32, np.int8)
         raw += d.tobytes() + q.tobytes(); deq[i] = dd * q
     return bytes(raw), deq.reshape(w.shape)
+
+def q8_0_activation(x):
+    """Reconstruct ggml-cpu's Q8_0 vec-dot activation input (32 values per block).
+
+    Native MoE uses ggml's float32 scale and reciprocal for q, stores scale as fp16,
+    then rounds scaled values to nearest integer. This is deliberately separate from
+    q8_0(), which creates the fixture's serialized weight blocks and must not change.
+    """
+    flat = np.asarray(x, dtype=np.float32).reshape(-1, 32)
+    deq = np.empty_like(flat, dtype=np.float64)
+    for i, blk in enumerate(flat):
+        amax = np.max(np.abs(blk))
+        d = np.float32(amax / np.float32(127.0))
+        stored_d = np.float16(d)
+        inv_d = np.float32(127.0) / amax if amax != 0 else np.float32(0.0)
+        q = np.clip(np.rint(blk * inv_d), -127, 127).astype(np.int8)
+        deq[i] = float(stored_d) * q
+    return deq.reshape(np.shape(x))
 def bf16(w):
     u = (w.astype(np.float32).view(np.uint32) >> 16).astype(np.uint16)
     return u.tobytes(), (u.astype(np.uint32) << 16).view(np.float32).astype(np.float64)
@@ -179,33 +200,47 @@ def attention(l, x, pos):
     t = np.concatenate([W[p + "attn_output_a.weight"][g * OL:(g + 1) * OL] @ o[g * GIN:(g + 1) * GIN] for g in range(G)])
     return W[p + "attn_output_b.weight"] @ t
 
-def moe(l, x, tok):
+def moe(l, x, tok, native_moe_activations=False):
     p = "blk.%d." % l; lg = W[p + "ffn_gate_inp.weight"] @ x; sc = np.sqrt(np.logaddexp(0, lg))
     if l < NHASH: idx = W[p + "ffn_gate_tid2eid.weight"][tok]
     else: idx = np.argsort(-(sc + W[p + "exp_probs_b.bias"]), kind="stable")[:K]
     w = sc[idx]; w = w / w.sum() * ESCALE; y = np.zeros(DIM)
     sw = lambda g, u, lim: g.clip(max=lim) / (1 + np.exp(-g.clip(max=lim))) * u.clip(-lim, lim)
+    # The native backend's gate/up rows use ggml Q8_0 activation dots; down rows are F32,
+    # so their SwiGLU input remains full precision. The default oracle stays all-float.
+    expert_x = q8_0_activation(x) if native_moe_activations else x
     for k, e in enumerate(idx):
-        g = W[p + "ffn_gate_exps.weight"][e] @ x; u = W[p + "ffn_up_exps.weight"][e] @ x
+        g = W[p + "ffn_gate_exps.weight"][e] @ expert_x; u = W[p + "ffn_up_exps.weight"][e] @ expert_x
         y += W[p + "ffn_down_exps.weight"][e] @ (w[k] * sw(g, u, CLAMP_E))
     g = W[p + "ffn_gate_shexp.weight"] @ x; u = W[p + "ffn_up_shexp.weight"] @ x
     return y + W[p + "ffn_down_shexp.weight"] @ sw(g, u, CLAMP_S)
 
-def forward(tok, pos):
+def forward(tok, pos, native_moe_activations=False):
     h = np.tile(W["token_embd.weight"][tok], (HC, 1))
     for l in range(NL):
         p = "blk.%d." % l
         y, post, comb = hc_pre(h, W[p + "hc_attn_fn.weight"], W[p + "hc_attn_scale.weight"], W[p + "hc_attn_base.weight"])
         a = attention(l, rmsn(y, W[p + "attn_norm.weight"]), pos); h = post[:, None] * a[None, :] + (comb[:, :, None] * h[:, None, :]).sum(0)
         y, post, comb = hc_pre(h, W[p + "hc_ffn_fn.weight"], W[p + "hc_ffn_scale.weight"], W[p + "hc_ffn_base.weight"])
-        a = moe(l, rmsn(y, W[p + "ffn_norm.weight"]), tok); h = post[:, None] * a[None, :] + (comb[:, :, None] * h[:, None, :]).sum(0)
+        a = moe(l, rmsn(y, W[p + "ffn_norm.weight"]), tok, native_moe_activations); h = post[:, None] * a[None, :] + (comb[:, :, None] * h[:, None, :]).sum(0)
     x = h.reshape(-1); mixes = W["output_hc_fn.weight"] @ x / np.sqrt((x * x).mean() + EPS)
     pre = sig(mixes * W["output_hc_scale.weight"][0] + W["output_hc_base.weight"]) + HEPS
     return W["output.weight"] @ rmsn((pre[:, None] * h).sum(0), W["output_norm.weight"])
 
-out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/tiny"; os.makedirs(out, exist_ok=True)
+args = sys.argv[1:]
+native_moe_activations = "--native-moe-activations" in args
+args = [arg for arg in args if arg != "--native-moe-activations"]
+if len(args) > 1:
+    raise SystemExit("usage: tiny_model.py [OUTDIR] [--native-moe-activations]")
+out = args[0] if args else "/tmp/tiny"
+if native_moe_activations:
+    # Keep this mode's GGUF and logits in a separate directory without changing the
+    # original float fixture path or any serialized tensor bytes.
+    out += "-native-moe"
+os.makedirs(out, exist_ok=True)
 gw.write(os.path.join(out, "tiny.gguf"))
 toks = [int(t) for t in rng.integers(1, VOCAB - 1, 26)]
-logits = np.array([forward(t, i) for i, t in enumerate(toks)], dtype=np.float32)
+logits = np.array([forward(t, i, native_moe_activations) for i, t in enumerate(toks)], dtype=np.float32)
 logits.tofile(os.path.join(out, "ref_logits.bin")); open(os.path.join(out, "tokens.txt"), "w").write(",".join(map(str, toks)))
-print("tiny model written to %s: %d tokens, logits %s, compress events: ratio4 every 4, ratio8 every 8, window wrap at 4" % (out, len(toks), logits.shape))
+print("tiny model written to %s: %d tokens, logits %s, compress events: ratio4 every 4, ratio8 every 8, window wrap at 4%s" %
+      (out, len(toks), logits.shape, ", native Q8_0 MoE gate/up activations" if native_moe_activations else ""))

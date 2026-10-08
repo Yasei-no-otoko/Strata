@@ -20,6 +20,9 @@ nothing in it is modified. Regenerate manually with:
 
 ## Windows HIP (experimental)
 
+See [DeepSeek-V4 CPU MoE](docs/DSV4_CPU.md) for the optional persistent host
+worker pool, CPU kernel modes, affinity behavior, and a Windows HIP build example.
+
 The extension can also compile its device kernels for AMD HIP. It uses the same
 quantization and MoE kernel source as CUDA, with a small runtime adapter. Windows
 uses read-only file mappings and offset-based reads for the GGUF shards, and pipe

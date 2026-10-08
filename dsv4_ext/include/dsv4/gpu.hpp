@@ -20,9 +20,8 @@ constexpr int kMaxHit = 8;  // max concurrent resident (HIT) experts per MoE lay
 //
 // An expert may also be given through the HOST pointers hg/hu/hd. experts_hit() then stages it into
 // the device pool registered by staging() and evaluates it on the device like a resident one. That is
-// what makes a MISS affordable: decoding an IQ1_M expert element by element on the host costs more
-// per token than the rest of the forward pass put together, while the same decode on the device is
-// ~100x cheaper and the PCIe transfer of the packed block hides behind the other kernels.
+// an alternative to the scalar float-reference host path for a MISS. Native quantized CPU
+// kernels provide another option; which is faster depends on the CPU and transfer costs.
 struct ExpPtrs {
     int n = 0;
     uint8_t* gate[kMaxHit] = {};
@@ -33,6 +32,9 @@ struct ExpPtrs {
     const uint8_t* hd[kMaxHit] = {};
     float w[kMaxHit] = {};
     size_t bpe = 0;
+    // Shared experts use the host swiglu_clamped double-exp arithmetic; routed experts keep
+    // the faster device float-exp path unless this opt-in field is set.
+    bool reference_activation = false;
 };
 
 /// Register the device scratch that host experts are staged through. Returns false, and leaves
@@ -70,10 +72,15 @@ void d2h(void* dst, const void* src, size_t bytes);
 /// the caller must fall back to the host. Never a partial or zero result.
 bool matvec(uint32_t type, const uint8_t* W, int64_t rows, int64_t in, const float* d_x, float* d_y);
 
+/// Batched y[g, :] = W[g, :, :] * x[g, :]. W is a contiguous sequence of `groups` row-major
+/// matrices, each with `rows_per_group` rows and `in` elements per row. x and y are contiguous
+/// group-major device buffers. False means unsupported/invalid input and writes nothing.
+bool matvec_grouped(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
+                    const float* d_x, float* d_y);
+
 /// One MoE layer's HIT experts, all resident in VRAM:
 ///   d_g[k] = Wg[k] * d_x ; d_u[k] = Wu[k] * d_x ; d_a[k] = w_k * swiglu_clamped(d_g[k], d_u[k], limit)
 ///   d_y    = sum_k Wd[k] * d_a[k]
-/// Scratch must hold kMaxHit * ff (d_g, d_u, d_a) and dim (d_y) floats.
 /// Scratch must hold kMaxHit * ff (d_g, d_u, d_a) and dim (d_y) floats.
 /// False: one of the three types has no kernel and d_y was left untouched (see experts_supported).
 /// Launches are asynchronous with respect to the host, so the caller can compute the MISS experts on the

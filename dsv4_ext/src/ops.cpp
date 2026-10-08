@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#if defined(DSV4_ENABLE_AVX2)
+#include <immintrin.h>
+#endif
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -132,6 +135,41 @@ void compress_topk(int ratio, int seqlen, int start_pos, int offset, std::vector
 
 namespace {
 inline double sigm(double v) { return 1.0 / (1.0 + std::exp(-v)); }
+
+#if defined(DSV4_ENABLE_AVX2)
+// Preserve the scalar operation order while using AVX2 for the independent conversions/products.
+// Accumulating partial vector sums would change rounding, which can alter attention scores near ties.
+inline double dot_f32_as_double(const float* a, const float* b, int n) {
+    double sum = 0.0;
+    int i = 0;
+    alignas(32) double products[8];
+    for (; i + 8 <= n; i += 8) {
+        const __m256 av = _mm256_loadu_ps(a + i);
+        const __m256 bv = _mm256_loadu_ps(b + i);
+        const __m256d p0 = _mm256_mul_pd(_mm256_cvtps_pd(_mm256_castps256_ps128(av)),
+                                         _mm256_cvtps_pd(_mm256_castps256_ps128(bv)));
+        const __m256d p1 = _mm256_mul_pd(_mm256_cvtps_pd(_mm256_extractf128_ps(av, 1)),
+                                         _mm256_cvtps_pd(_mm256_extractf128_ps(bv, 1)));
+        _mm256_store_pd(products, p0);
+        _mm256_store_pd(products + 4, p1);
+        for (int lane = 0; lane < 8; ++lane) sum += products[lane];
+    }
+    for (; i < n; ++i) sum += (double) a[i] * b[i];
+    return sum;
+}
+
+inline void weighted_add_f32(float* dst, const float* src, int n, double weight) {
+    const __m256d wd = _mm256_set1_pd(weight);
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        const __m128 v = _mm_loadu_ps(src + i);
+        const __m256d product = _mm256_mul_pd(_mm256_cvtps_pd(v), wd);
+        const __m128 rounded_product = _mm256_cvtpd_ps(product);
+        _mm_storeu_ps(dst + i, _mm_add_ps(_mm_loadu_ps(dst + i), rounded_product));
+    }
+    for (; i < n; ++i) dst[i] += (float) (weight * src[i]);
+}
+#endif
 }
 
 void hc_split_sinkhorn(const float* mixes, const float* scale, const float* base, int hc, int iters, float eps,
@@ -202,12 +240,31 @@ void hc_post(const float* x, const float* residual, const float* post, const flo
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
-    for (int k = 0; k < hc; ++k)
+    for (int k = 0; k < hc; ++k) {
+#if defined(DSV4_ENABLE_AVX2)
+        int i = 0;
+        const __m256d p = _mm256_set1_pd(post[k]);
+        for (; i + 4 <= d; i += 4) {
+            __m256d a = _mm256_mul_pd(_mm256_cvtps_pd(_mm_loadu_ps(x + i)), p);
+            for (int j = 0; j < hc; ++j) {
+                const __m256d r = _mm256_cvtps_pd(_mm_loadu_ps(residual + j * d + i));
+                a = _mm256_add_pd(a, _mm256_mul_pd(_mm256_set1_pd(comb[j * hc + k]), r));
+            }
+            _mm_storeu_ps(out + k * d + i, _mm256_cvtpd_ps(a));
+        }
+        for (; i < d; ++i) {
+            double a = (double) post[k] * x[i];
+            for (int j = 0; j < hc; ++j) a += (double) comb[j * hc + k] * residual[j * d + i];
+            out[k * d + i] = (float) a;
+        }
+#else
         for (int i = 0; i < d; ++i) {
             double a = (double) post[k] * x[i];
             for (int j = 0; j < hc; ++j) a += (double) comb[j * hc + k] * residual[j * d + i];
             out[k * d + i] = (float) a;
         }
+#endif
+    }
 }
 
 void hc_head(const float* x, int hc, int d, const float* fn, const float* scale, const float* base, float norm_eps,
@@ -237,34 +294,47 @@ void hc_head(const float* x, int hc, int d, const float* fn, const float* scale,
 
 // The most expensive op of a token: n_head(64) x topk(128+) x head_dim(512), walked twice, in double.
 // Heads are fully independent (own q row, own output row), so parallelising over them changes no head's
-// arithmetic. The score scratch is thread_local: 64 heads x 43 layers x every token was a malloc per head.
+// arithmetic. Each OpenMP worker keeps its score scratch capacity across heads and tokens.
 void sparse_attn_token(const float* q, int h, int d, const float* kv, const int* idxs, int topk, const float* sink,
                        float scale, float* o) {
-    std::vector<int> v;
+    // Reuse the index buffer across tokens; this function is called once per layer/token.
+    static thread_local std::vector<int> v;
+    v.clear();
     for (int t = 0; t < topk; ++t) if (idxs[t] >= 0) v.push_back(idxs[t]);
+    // OpenMP workers have their own thread-local storage. Capture this call's buffer through
+    // an ordinary shared pointer so every head sees the caller's filtered indices.
+    const std::vector<int>* valid = &v;
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
     for (int hh = 0; hh < h; ++hh) {
         float* oo = o + (size_t) hh * d;
         std::fill(oo, oo + d, 0.f);
-        if (v.empty()) continue;
+        if (valid->empty()) continue;
         static thread_local std::vector<double> s;
-        s.resize(v.size());
+        s.resize(valid->size());
         const float* qq = q + (size_t) hh * d;
         double mx = -1e300;
-        for (size_t t = 0; t < v.size(); ++t) {
-            const float* kk = kv + (size_t) v[t] * d;
+        for (size_t t = 0; t < valid->size(); ++t) {
+            const float* kk = kv + (size_t) (*valid)[t] * d;
+#if defined(DSV4_ENABLE_AVX2)
+            const double a = dot_f32_as_double(qq, kk, d);
+#else
             double a = 0;
             for (int i = 0; i < d; ++i) a += (double) qq[i] * kk[i];
+#endif
             s[t] = a * scale;
             mx = std::max(mx, s[t]);
         }
         double den = std::exp((double) sink[hh] - mx);
         for (auto& e : s) { e = std::exp(e - mx); den += e; }
-        for (size_t t = 0; t < v.size(); ++t) {
-            const float* kk = kv + (size_t) v[t] * d;
+        for (size_t t = 0; t < valid->size(); ++t) {
+            const float* kk = kv + (size_t) (*valid)[t] * d;
+#if defined(DSV4_ENABLE_AVX2)
+            weighted_add_f32(oo, kk, d, s[t] / den);
+#else
             for (int i = 0; i < d; ++i) oo[i] += (float) (s[t] / den * kk[i]);
+#endif
         }
     }
 }

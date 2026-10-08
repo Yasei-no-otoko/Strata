@@ -6,6 +6,7 @@ The child inherits the current runtime-library PATH. No model or config is chang
 """
 import argparse
 import ctypes
+import hashlib
 from datetime import datetime, timezone
 import json
 import os
@@ -43,6 +44,12 @@ def main():
         ap.error("output already contains summary.json; use a new case directory")
     report = {"started_utc": datetime.now(timezone.utc).isoformat(), "command": command,
               "cwd": str(Path.cwd()), "timeout_s": args.timeout, "samples": []}
+    report["runtime_environment"] = {key: os.environ.get(key) for key in (
+        "OMP_NUM_THREADS", "OMP_WAIT_POLICY", "OMP_PROC_BIND", "OMP_PLACES",
+        "KMP_BLOCKTIME", "KMP_AFFINITY", "KMP_HW_SUBSET", "DSV4_HIP_ASYNC_STAGE")}
+    executable = Path(command[0])
+    if executable.is_file():
+        report["executable_sha256"] = hashlib.sha256(executable.read_bytes()).hexdigest()
     get_process = get_memory = None
     if os.name == "nt":
         get_process = ctypes.WinDLL("psapi").GetProcessMemoryInfo
@@ -64,6 +71,7 @@ def main():
                     pm = ProcessMemory(); pm.cb = ctypes.sizeof(pm)
                     if get_process(int(proc._handle), ctypes.byref(pm), pm.cb):
                         sample.update(working_set_bytes=pm.WorkingSetSize,
+                                      page_fault_count=pm.PageFaultCount,
                                       peak_working_set_bytes=pm.PeakWorkingSetSize,
                                       private_bytes=pm.PrivateUsage,
                                       peak_pagefile_bytes=pm.PeakPagefileUsage)

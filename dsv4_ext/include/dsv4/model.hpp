@@ -30,11 +30,22 @@ struct RunOpts {
     int adapt_swaps = 0;
     bool verify_slots = false;
     bool verbose = true;          // startup report: memory plan, profile, RAM/VRAM expert counts
+    bool profile_timing = false;  // optional host wall-clock breakdown; nested fields are not additive
+    bool grouped_attention = true; // combine output-projection transfers across attention groups
+    bool fused_shared = true;      // keep the shared expert's intermediate activations on the GPU
+    int cpu_experts = 0;          // send the last N routed experts to the CPU; remaining experts use HIP/CUDA
+    int cpu_threads = 0;          // persistent expert pool participants, 0 follows --threads
+    bool cpu_pin = true;          // one worker per physical core, with Windows processor groups
+    bool cpu_host_pin = true;     // scoped Windows CPU Set on the reserved caller core
+    std::string cpu_moe_kernel = "auto"; // auto/native/reference; native quantizes activations as ggml-cpu does
 };
 
 // Statistiche di runtime (lette da dsv4_run per il report finale).
 struct Stats {
-    uint64_t h2d_bytes = 0;   // bytes uploaded to VRAM
+    uint64_t h2d_bytes = 0;   // resident expert admissions/swaps uploaded to VRAM (not all H2D)
+    uint64_t staged_bytes = 0; // expert weights submitted through the device staging pool
+    uint64_t cpu_experts = 0;  // expert evaluations actually computed on the CPU
+    uint64_t native_cpu_experts = 0; // evaluated with ggml-cpu quantized activation kernels
     uint64_t admits = 0;      // experts loaded into a free VRAM slot
     uint64_t swaps = 0;       // adaptive evict+load decisions
     uint64_t hits = 0;        // routed expert evaluations served from VRAM
@@ -45,8 +56,13 @@ struct Stats {
     uint64_t cache_bytes = 0;     // bytes copied into the arena
     uint64_t tokens = 0;      // tokens processed
     double total_s = 0;       // forward time
-    double cpu_miss_s = 0;    // time spent computing MISS experts on the CPU
-    double gpu_hit_s = 0;     // time spent waiting for the HIT experts on the GPU
+    double cpu_miss_s = 0;    // host staging/submission plus any CPU fallback computation
+    double gpu_hit_s = 0;     // tail wait/readback for resident AND staged GPU experts
+    double dense_mv_s = 0;    // all dense matvec round trips, nested within attention/MoE/head
+    double attention_s = 0;
+    double sparse_attention_s = 0; // nested within attention_s
+    double moe_s = 0;
+    double hyper_s = 0;
 };
 
 class Model {

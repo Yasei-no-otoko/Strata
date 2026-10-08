@@ -4,6 +4,7 @@
 #include "dsv4/gpu.hpp"
 #include "dsv4/mem_plan.hpp"
 #include "dsv4/ops.hpp"
+#include "dsv4/cpu_moe.hpp"
 
 #include "dsv4/platform_file.hpp"
 
@@ -31,6 +32,14 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 double secs(Clock::time_point a, Clock::time_point b) { return std::chrono::duration<double>(b - a).count(); }
+struct PhaseTimer {
+    double* target;
+    Clock::time_point start;
+    PhaseTimer(bool enabled, double& total) : target(enabled ? &total : nullptr) {
+        if (target) start = Clock::now();
+    }
+    ~PhaseTimer() { if (target) *target += secs(start, Clock::now()); }
+};
 
 // ---------------------------------------------------------------- activation "QAT" simulation (model.py act_quant / fp4_act_quant)
 float pow2_ceil(float v) { int e; float m = std::frexp(v, &e); return std::ldexp(1.f, m == 0.5f ? e - 1 : e); }
@@ -181,6 +190,8 @@ struct Model::Impl {
     std::vector<void*> allocs;
     uint8_t* d_stage = nullptr;      // device pool MISS experts are staged through (see gpu::staging)
     bool have_profile = false;
+    std::unique_ptr<CpuMoe> cpu_moe;
+    bool use_native_cpu = false;
     uint64_t cache_clock = 0;                   // LRU clock of the MISS arenas
     std::vector<std::pair<int, int>> missed_now;      // (layer, expert) missed during the current token
     int cur_pos = 0;
@@ -228,6 +239,7 @@ struct Model::Impl {
         gpu::h2d(t.d, t.h, t.rb * (size_t) t.out);
     }
     void mv(const Tn& w, const float* x, float* y, int64_t row0 = 0, int64_t nrows = -1) {
+        PhaseTimer timer(o.profile_timing, st->dense_mv_s);
         if (nrows < 0) nrows = w.out;
         if (o.gpu && w.d) {
             gpu::h2d(d_x, x, (size_t) w.in * 4);
@@ -246,6 +258,22 @@ struct Model::Impl {
         cpu_mv(w.type, w.h + (size_t) row0 * w.rb, nrows, w.in, x, y);
     }
     bool warned_host_fallback = false;
+
+    void mv_grouped(const Tn& w, const float* x, float* y, int groups, int rows_per_group) {
+        if (o.gpu && w.d && o.grouped_attention && groups > 0 && rows_per_group > 0 &&
+            w.out == (int64_t) groups * rows_per_group && w.in > 0 &&
+            w.in == ((int64_t)c.n_head * hd) / groups && ((int64_t)c.n_head * hd) % groups == 0) {
+            PhaseTimer timer(o.profile_timing, st->dense_mv_s);
+            gpu::h2d(d_x, x, (size_t) groups * w.in * sizeof(float));
+            if (gpu::matvec_grouped(w.type, w.d, groups, rows_per_group, w.in, d_x, d_y)) {
+                gpu::d2h(y, d_y, (size_t) groups * rows_per_group * sizeof(float));
+                return;
+            }
+        }
+        for (int g = 0; g < groups; ++g)
+            mv(w, x + (size_t) g * w.in, y + (size_t) g * rows_per_group,
+               (int64_t) g * rows_per_group, rows_per_group);
+    }
 
     // ------------------------------------------------------------ expert sources / residency
     static ExpSrc packed(const Layer& l, const uint8_t* p) {
@@ -325,6 +353,17 @@ struct Model::Impl {
         if (!inventory_from_gguf(h, c, inv, err)) return false;
         if (c.gating_func != 1 && c.gating_func != 2 && c.gating_func != 4) { err = "unsupported expert_gating_func " + std::to_string(c.gating_func); return false; }
         if (c.idx_key_len & (c.idx_key_len - 1)) { err = "indexer key length must be a power of two (Hadamard)"; return false; }
+        if (o.cpu_experts < 0 || o.cpu_experts > c.n_expert_used || o.cpu_threads < 0) {
+            err = "--cpu-experts must be between zero and the model's routed expert count; --cpu-threads must be nonnegative";
+            return false;
+        }
+        if (o.cpu_moe_kernel != "auto" && o.cpu_moe_kernel != "native" && o.cpu_moe_kernel != "reference") {
+            err = "--cpu-moe-kernel must be auto, native, or reference"; return false;
+        }
+        use_native_cpu = o.cpu_moe_kernel != "reference" && native_cpu_available();
+        if (o.cpu_moe_kernel == "native" && !use_native_cpu) {
+            err = "native CPU MoE requires a DSV4_NATIVE_CPU build and its supported CPU/OS instruction set"; return false;
+        }
 #ifdef _OPENMP
         // Every matvec here is memory-bound and embarrassingly parallel over the output rows: leaving this on
         // one core costs roughly 20x on a 28-thread machine. 0 means "use the whole machine".
@@ -367,7 +406,8 @@ struct Model::Impl {
         if (o.gpu) {
             if (!gpu::init(err)) return false;
             const uint64_t before_scratch = vram_used;
-            d_x = (float*) galloc(16384 * 4); d_y = (float*) galloc((size_t) std::max<int64_t>(c.vocab, 16384) * 4 + 4096);
+            d_x = (float*) galloc((size_t) std::max<int64_t>(16384, (int64_t)c.n_head * hd) * 4);
+            d_y = (float*) galloc((size_t) std::max<int64_t>(c.vocab, 16384) * 4 + 4096);
             d_g = (float*) galloc((size_t) gpu::kMaxHit * c.ff_exp * 4); d_u = (float*) galloc((size_t) gpu::kMaxHit * c.ff_exp * 4);
             d_a = (float*) galloc((size_t) gpu::kMaxHit * c.ff_exp * 4); d_yh = (float*) galloc((size_t) dim * 4);
             if (!d_x || !d_y || !d_g || !d_u || !d_a || !d_yh) { err = "cannot allocate GPU scratch"; return false; }
@@ -415,6 +455,24 @@ struct Model::Impl {
             if (!err.empty()) return false;
             for (Tn* t : {&y.q_a, &y.q_b, &y.kv, &y.o_a, &y.o_b, &y.gate_inp, &y.sh_gate, &y.sh_up, &y.sh_down, &y.ac.wkv, &y.ac.wg, &y.i_q_b, &y.ic.wkv, &y.ic.wg, &y.eg, &y.eu, &y.ed})
                 if (!need_supported(*t, err)) return false;
+            if (use_native_cpu) {
+                // Validate before any inference: explicit native mode must fail at load,
+                // while auto can retain the portable reference path for unusual formats.
+                NativeCpuFormat format;
+                std::string why;
+                for (const Tn* t : {&y.eg, &y.eu, &y.ed}) {
+                    if (!native_cpu_format(t->type, t->in, format, why) || format.weight_row_bytes != t->rb) {
+                        if (why.empty()) why = "ggml and model expert row sizes differ";
+                        if (o.cpu_moe_kernel == "native") {
+                            err = "native CPU MoE at layer " + std::to_string(l) + ": " + why;
+                            return false;
+                        }
+                        std::fprintf(stderr, "CPU MoE auto uses reference dots: %s\n", why.c_str());
+                        use_native_cpu = false;
+                        break;
+                    }
+                }
+            }
             y.bg = y.eg.rb * (size_t) y.eg.out; y.bu = y.eu.rb * (size_t) y.eu.out; y.bd = y.ed.rb * (size_t) y.ed.out; y.bpe = y.bg + y.bu + y.bd;
             if (y.eg.ne != c.n_expert) { err = "expert tensor expert-count mismatch at layer " + std::to_string(l); return false; }
             y.slot_of.assign((size_t) c.n_expert, -1); y.ram_idx.assign((size_t) c.n_expert, -1); y.freq.assign((size_t) c.n_expert, 0);
@@ -683,6 +741,7 @@ struct Model::Impl {
     }
 
     void attention(int l, const float* x, int pos, float* out) {
+        PhaseTimer timer(o.profile_timing, st->attention_s);
         Layer& y = L[(size_t) l];
         const int nh = c.n_head;
         const bool yarn = y.ratio > 0;
@@ -708,16 +767,48 @@ struct Model::Impl {
             idx.insert(idx.end(), tmp.begin(), tmp.end());
         }
         std::vector<float> o_(( size_t) nh * hd);
-        sparse_attn_token(q.data(), nh, hd, y.kvbuf.data(), idx.data(), (int) idx.size(), y.sinks.f(), 1.f / std::sqrt((float) hd), o_.data());
+        {
+            PhaseTimer sparse_timer(o.profile_timing, st->sparse_attention_s);
+            sparse_attn_token(q.data(), nh, hd, y.kvbuf.data(), idx.data(), (int) idx.size(), y.sinks.f(), 1.f / std::sqrt((float) hd), o_.data());
+        }
         for (int hh = 0; hh < nh; ++hh) rotary(&o_[(size_t) hh * hd], hd, rd, cs, sn, true);
-        const int G = c.o_groups; const int gin = nh * hd / G;
+        const int G = c.o_groups;
         std::vector<float> t((size_t) G * c.o_lora);
-        for (int g = 0; g < G; ++g) mv(y.o_a, &o_[(size_t) g * gin], &t[(size_t) g * c.o_lora], (int64_t) g * c.o_lora, c.o_lora);
+        mv_grouped(y.o_a, o_.data(), t.data(), G, c.o_lora);
         mv(y.o_b, t.data(), out);
     }
 
     // ------------------------------------------------------------ MoE (router -> HIT on GPU / MISS on CPU -> shared expert)
+    void ensure_cpu_moe() {
+        if (!cpu_moe) {
+            const int threads = o.cpu_threads > 0 ? o.cpu_threads : std::max(1, o.threads);
+            cpu_moe.reset(new CpuMoe(threads, o.cpu_pin, use_native_cpu, o.cpu_host_pin));
+            if (use_native_cpu) std::fprintf(stderr, "CPU MoE build: %s\n", native_cpu_description().c_str());
+            std::fprintf(stderr, "CPU MoE: %s, %d persistent participants, workers on logical CPUs:",
+                         use_native_cpu ? "ggml quantized activation dots" : "float reference dots", cpu_moe->threads());
+            for (int id : cpu_moe->worker_cpus()) std::fprintf(stderr, " %d", id);
+            std::fprintf(stderr, " (Windows ID = group*64 + processor)\n");
+            std::fprintf(stderr, "CPU MoE caller: scoped Windows CPU Set target %d (-1 = unchanged)\n", cpu_moe->caller_cpu());
+        }
+    }
+    void run_cpu_experts(Layer& y, const float* x, const int32_t* idx, const float* weights,
+                         const int* miss, int count, float limit, float* sum) {
+        ensure_cpu_moe();
+        CpuExpert experts[16];
+        for (int mi = 0; mi < count; ++mi) {
+            const int k = miss[mi]; const ExpSrc s = src_miss(y, idx[k]);
+            experts[mi] = {s.g, s.u, s.d, weights[k]};
+        }
+        std::string err;
+        if (!cpu_moe->run(y.eg.type, y.eu.type, y.ed.type, dim, c.ff_exp, limit, x, experts, count, sum, err)) {
+            std::fprintf(stderr, "FATAL: CPU MoE failed: %s\n", err.c_str());
+            std::abort();
+        }
+        if (use_native_cpu) st->native_cpu_experts += (uint64_t)count;
+    }
+
     void moe(int l, const float* x, int token, float* y_out) {
+        PhaseTimer timer(o.profile_timing, st->moe_s);
         Layer& y = L[(size_t) l];
         const int K = c.n_expert_used, ff = c.ff_exp, E = c.n_expert;
         std::vector<float> lg((size_t) E);
@@ -732,11 +823,12 @@ struct Model::Impl {
         // others by host pointer through the staging pool. Only when the device refuses (no kernel for
         // these types, or no staging pool) does an expert fall back to the host loop below.
         gpu::ExpPtrs p{};   // value-initialised: n = 0, pointers unused beyond n
-        int miss[16], nmiss = 0, nres = 0, nstaged = 0, nstaged_dev = 0;
+        int miss[16], nmiss = 0, nres = 0, nstaged_dev = 0;
         const bool device_experts = o.gpu && y.gpu_experts && (d_stage || gpu::is_emulated());
         p.bpe = y.bpe;
         for (int k = 0; k < K; ++k) {
             const int e = idx[k];
+            if (k >= K - o.cpu_experts) { miss[nmiss++] = k; continue; }
             int s = (o.gpu && y.slots > 0) ? y.slot_of[(size_t) e] : -1;
             if (s < 0 && o.gpu && y.slots > 0) {   // admit into a free slot (static profile mode fills the rest on first use)
                 for (int q = 0; q < y.slots; ++q) if (y.occ[(size_t) q] < 0) { upload_slot(y, q, e); ++st->admits; s = q; break; }
@@ -748,7 +840,7 @@ struct Model::Impl {
                 ++nres;
             } else {
                 missed_now.push_back({l, e});
-                if (!device_experts || p.n >= gpu::kMaxHit) { miss[nmiss++] = k; ++nstaged; continue; }
+                if (!device_experts || p.n >= gpu::kMaxHit) { miss[nmiss++] = k; continue; }
                 ExpSrc s2 = src_miss(y, e);
                 p.hg[p.n] = s2.g; p.hu[p.n] = s2.u; p.hd[p.n] = s2.d; p.w[p.n] = w[k]; ++p.n;
                 ++nstaged_dev;
@@ -758,7 +850,7 @@ struct Model::Impl {
         // host memory is still a miss for the residency plan, and the hit rate the report shows is what
         // tells the operator whether the slot budget is right.
         st->hits += (uint64_t) nres;
-        st->misses += (uint64_t) (nstaged + nmiss + nstaged_dev);
+        st->misses += (uint64_t) (nmiss + nstaged_dev);
         const float lim = c.swiglu_clamp_exp[(size_t) l];
         auto t0 = Clock::now();
         bool hit_ok = false;
@@ -768,7 +860,8 @@ struct Model::Impl {
             if (!hit_ok) {   // no kernel, or a device error: those experts are computed on the host instead
                 nmiss = 0;
                 for (int k = 0; k < K; ++k) miss[nmiss++] = k;
-                st->hits -= (uint64_t) nres;   // they were already counted as misses: residency, not device
+                st->hits -= (uint64_t) nres;
+                st->misses += (uint64_t) nres;
                 p.n = 0;
                 if (!warned_host_fallback) {
                     warned_host_fallback = true;
@@ -777,15 +870,11 @@ struct Model::Impl {
                 }
             }
         }
-        std::vector<float> acc((size_t) dim, 0.f), g((size_t) ff), u((size_t) ff), a((size_t) ff), yy((size_t) dim);
-        for (int mi = 0; mi < nmiss; ++mi) {  // ...while the CPU computes whatever the device could not take
-            const int k = miss[mi]; ExpSrc s = src_miss(y, idx[k]);
-            cpu_mv(y.eg.type, s.g, ff, dim, x, g.data()); cpu_mv(y.eu.type, s.u, ff, dim, x, u.data());
-            swiglu_clamped(g.data(), u.data(), ff, lim, a.data());
-            for (float& v : a) v *= w[k];
-            cpu_mv(y.ed.type, s.d, dim, ff, a.data(), yy.data());
-            for (int i = 0; i < dim; ++i) acc[(size_t) i] += yy[(size_t) i];
-        }
+        std::vector<float> acc((size_t) dim, 0.f);
+        st->cpu_experts += (uint64_t) nmiss;
+        if (hit_ok) st->staged_bytes += (uint64_t) nstaged_dev * y.bpe;
+        // GPU launches above are already in flight while the persistent CPU team processes its rows.
+        if (nmiss) run_cpu_experts(y, x, idx, w, miss, nmiss, lim, acc.data());
         auto t1 = Clock::now();
         if (hit_ok && p.n > 0) {
             std::vector<float> yh((size_t) dim);
@@ -794,11 +883,27 @@ struct Model::Impl {
         }
         auto t2 = Clock::now();
         st->cpu_miss_s += secs(t0, t1); st->gpu_hit_s += secs(t1, t2);
-        // shared expert
-        std::vector<float> sg((size_t) ff), su((size_t) ff), sa((size_t) ff), sy((size_t) dim);
-        mv(y.sh_gate, x, sg.data()); mv(y.sh_up, x, su.data());
-        swiglu_clamped(sg.data(), su.data(), ff, c.swiglu_clamp_shexp[(size_t) l], sa.data());
-        mv(y.sh_down, sa.data(), sy.data());
+        // The routed results have been read back, so their scratch can now serve the shared expert.
+        // Keeping gate/up/activation/down on the device removes two intermediate round trips.
+        std::vector<float> sy((size_t) dim);
+        bool shared_ok = false;
+        if (o.fused_shared && o.gpu && y.sh_gate.d && y.sh_up.d && y.sh_down.d &&
+            gpu::experts_supported(y.sh_gate.type, y.sh_up.type, y.sh_down.type)) {
+            gpu::ExpPtrs shared{};
+            shared.reference_activation = true; // preserve the former host double-exp SwiGLU arithmetic
+            shared.n = 1; shared.gate[0] = y.sh_gate.d; shared.up[0] = y.sh_up.d;
+            shared.down[0] = y.sh_down.d; shared.w[0] = 1.f;
+            gpu::h2d(d_x, x, (size_t) dim * sizeof(float));
+            shared_ok = gpu::experts_hit(shared, y.sh_gate.type, y.sh_up.type, y.sh_down.type,
+                                         ff, dim, c.swiglu_clamp_shexp[(size_t) l], d_x, d_g, d_u, d_a, d_yh);
+            if (shared_ok) gpu::d2h(sy.data(), d_yh, (size_t) dim * sizeof(float));
+        }
+        if (!shared_ok) {
+            std::vector<float> sg((size_t) ff), su((size_t) ff), sa((size_t) ff);
+            mv(y.sh_gate, x, sg.data()); mv(y.sh_up, x, su.data());
+            swiglu_clamped(sg.data(), su.data(), ff, c.swiglu_clamp_shexp[(size_t) l], sa.data());
+            mv(y.sh_down, sa.data(), sy.data());
+        }
         for (int i = 0; i < dim; ++i) y_out[i] = acc[(size_t) i] + sy[(size_t) i];
     }
     int32_t* last_routing_p = nullptr;
@@ -807,20 +912,33 @@ struct Model::Impl {
     void block(int l, std::vector<float>& hres, int token, int pos) {
         Layer& y = L[(size_t) l];
         std::vector<float> yv((size_t) dim), post((size_t) hc), comb((size_t) hc * hc), nrm((size_t) dim), a((size_t) dim), hn((size_t) hc * dim);
-        hc_pre(hres.data(), hc, dim, y.hc_attn_fn.f(), y.hc_attn_scale.f(), y.hc_attn_base.f(), c.rms_eps, c.hc_sinkhorn_iters, c.hc_eps, yv.data(), post.data(), comb.data());
+        {
+            PhaseTimer timer(o.profile_timing, st->hyper_s);
+            hc_pre(hres.data(), hc, dim, y.hc_attn_fn.f(), y.hc_attn_scale.f(), y.hc_attn_base.f(), c.rms_eps, c.hc_sinkhorn_iters, c.hc_eps, yv.data(), post.data(), comb.data());
+        }
         rmsnorm(yv.data(), y.attn_norm.f(), c.rms_eps, dim, nrm.data());
         attention(l, nrm.data(), pos, a.data());
-        hc_post(a.data(), hres.data(), post.data(), comb.data(), hc, dim, hn.data());
-        hres = hn;
-        hc_pre(hres.data(), hc, dim, y.hc_ffn_fn.f(), y.hc_ffn_scale.f(), y.hc_ffn_base.f(), c.rms_eps, c.hc_sinkhorn_iters, c.hc_eps, yv.data(), post.data(), comb.data());
+        {
+            PhaseTimer timer(o.profile_timing, st->hyper_s);
+            hc_post(a.data(), hres.data(), post.data(), comb.data(), hc, dim, hn.data());
+            hres = hn;
+            hc_pre(hres.data(), hc, dim, y.hc_ffn_fn.f(), y.hc_ffn_scale.f(), y.hc_ffn_base.f(), c.rms_eps, c.hc_sinkhorn_iters, c.hc_eps, yv.data(), post.data(), comb.data());
+        }
         rmsnorm(yv.data(), y.ffn_norm.f(), c.rms_eps, dim, nrm.data());
         moe(l, nrm.data(), token, a.data());
-        hc_post(a.data(), hres.data(), post.data(), comb.data(), hc, dim, hn.data());
-        hres = hn;
+        {
+            PhaseTimer timer(o.profile_timing, st->hyper_s);
+            hc_post(a.data(), hres.data(), post.data(), comb.data(), hc, dim, hn.data());
+            hres = hn;
+        }
     }
 
     void forward(int token, int pos, std::vector<float>* logits) {
         auto t0 = Clock::now();
+        if (o.cpu_experts > 0 || !o.gpu) ensure_cpu_moe();
+        // Keep the caller on its reserved core for the whole token. Nested pool
+        // phases reuse this selection rather than issuing two OS migrations per phase.
+        auto caller_scope = cpu_moe ? cpu_moe->scoped_caller() : CpuPool::CallerScope{};
         std::vector<float> e((size_t) dim), hres((size_t) hc * dim), x((size_t) dim), xn((size_t) dim);
         dequant_row(embd.type, embd.h + (size_t) token * embd.rb, dim, e.data());
         for (int j = 0; j < hc; ++j) std::memcpy(&hres[(size_t) j * dim], e.data(), (size_t) dim * 4);
