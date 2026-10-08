@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]        # the Strata checkout that holds dsv4_ext
@@ -58,10 +59,11 @@ def main() -> int:
             src = (ROOT / "serve" / "chat_template.jinja").read_text(encoding="utf-8")
             print("the GGUF carries no tokenizer.chat_template: using Strata's serve/chat_template.jinja",
                   file=sys.stderr)
-        tmp = Path("/tmp/dsv4_chat_template.jinja")
-        tmp.write_text(src, encoding="utf-8", newline="\n")
-        rendered = ChatTemplate(tmp).render(json.loads(a.messages), tools=json.loads(a.tools) if a.tools else None,
-                                            add_generation_prompt=not a.no_generation_prompt)
+        with tempfile.TemporaryDirectory(prefix="dsv4-tokenizer-") as tmpdir:
+            tmp = Path(tmpdir) / "chat_template.jinja"
+            tmp.write_text(src, encoding="utf-8", newline="\n")
+            rendered = ChatTemplate(tmp).render(json.loads(a.messages), tools=json.loads(a.tools) if a.tools else None,
+                                                add_generation_prompt=not a.no_generation_prompt)
         text = rendered
     if text is None:
         raise SystemExit("give the text, or --chat --messages …")

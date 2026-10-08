@@ -2,18 +2,68 @@
 #include "dsv4/config.hpp"
 #include "dsv4/gguf_header.hpp"
 #include "dsv4/mem_plan.hpp"
+#include "dsv4/platform_file.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
+#if defined(_WIN32)
+#include <winioctl.h>
+#else
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 static int g_fail = 0;
 #define CHECK(cond) do { if (!(cond)) { std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); ++g_fail; } } while (0)
 
 namespace {
+std::string temp_path(const char* suffix) {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    return (std::filesystem::temp_directory_path() / ("dsv4_" + std::to_string(stamp) + "_" + suffix)).string();
+}
+
+bool write_sparse_sentinel(const std::string& path, uint64_t offset, const uint8_t* bytes, size_t size) {
+#if defined(_WIN32)
+    std::wstring wide;
+    if (!dsv4::utf8_to_wide(path, wide)) return false;
+    HANDLE f = CreateFileW(wide.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    DWORD ignored = 0;
+    const bool sparse = DeviceIoControl(f, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &ignored, nullptr) != 0;
+    LARGE_INTEGER pos{}; pos.QuadPart = static_cast<LONGLONG>(offset + size);
+    bool ok = sparse && SetFilePointerEx(f, pos, nullptr, FILE_BEGIN) && SetEndOfFile(f);
+    pos.QuadPart = static_cast<LONGLONG>(offset);
+    ok = ok && SetFilePointerEx(f, pos, nullptr, FILE_BEGIN);
+    DWORD written = 0;
+    ok = ok && WriteFile(f, bytes, static_cast<DWORD>(size), &written, nullptr) && written == size;
+    CloseHandle(f);
+    return ok;
+#else
+    const int fd = ::open(path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+    if (fd < 0) return false;
+    bool ok = offset <= static_cast<uint64_t>(std::numeric_limits<off_t>::max()) - size &&
+              ftruncate(fd, static_cast<off_t>(offset + size)) == 0;
+    size_t done = 0;
+    while (ok && done < size) {
+        const ssize_t n = pwrite(fd, bytes + done, size - done, static_cast<off_t>(offset + done));
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) { ok = false; break; }
+        done += static_cast<size_t>(n);
+    }
+    ::close(fd);
+    return ok;
+#endif
+}
+
 struct W {
     std::vector<uint8_t> b;
     template <class T> void pod(T v) { const uint8_t* p = (const uint8_t*) &v; b.insert(b.end(), p, p + sizeof(T)); }
@@ -54,7 +104,7 @@ bool write_file(const std::string& path, const W& body_kv, uint64_t n_kv, const 
         w.pod<uint64_t>(off);
         off += 32;
     }
-    FILE* f = std::fopen(path.c_str(), "wb");
+    FILE* f = dsv4::open_binary_file(path, true);
     if (!f) return false;
     std::fwrite(w.b.data(), 1, w.b.size(), f);
     std::fclose(f);
@@ -65,6 +115,10 @@ constexpr uint32_t T_IQ1_M = 29, T_IQ2_XXS = 16, T_F32 = 0;
 }  // namespace
 
 int main() {
+    const std::string f1 = temp_path("t1.gguf"), f2 = temp_path("t2.gguf"), f3 = temp_path("t3.gguf");
+    const std::string bad_path = temp_path("bad.gguf"), overflow_path = temp_path("overflow.gguf"), raw_path = temp_path("mapped.bin");
+    const std::string sparse_path = temp_path("sparse.bin");
+    const std::string replace_path = temp_path("profile.bin"), replace_tmp = temp_path("profile.bin.tmp");
     // ---- synthetic DeepSeek-V4-Flash header (values copied from the real shard-1 dump) ----
     W kv; uint64_t n = 0;
     kv_str(kv, "general.architecture", "deepseek4"); ++n;
@@ -112,7 +166,6 @@ int main() {
     kv_u32(kv, "tokenizer.ggml.eos_token_id", 1); ++n;
 
     // shard 1: metadata only (as in the real file); shard 2: layers 0..21 + token_embd; shard 3: layers 22..42 + MTP
-    const std::string f1 = "/tmp/dsv4_t1.gguf", f2 = "/tmp/dsv4_t2.gguf", f3 = "/tmp/dsv4_t3.gguf";
     auto layer_tensors = [](int l, uint32_t down_type) {
         std::string p = "blk." + std::to_string(l) + ".";
         return std::vector<TInfo>{{p + "ffn_gate_exps.weight", {4096, 2048, 256}, T_IQ1_M},
@@ -147,10 +200,64 @@ int main() {
     // a wrong architecture must be refused
     {
         W bad; uint64_t nb = 0; kv_str(bad, "general.architecture", "qwen3"); ++nb;
-        write_file("/tmp/dsv4_bad.gguf", bad, nb, {});
+        write_file(bad_path, bad, nb, {});
         dsv4::GgufHeader hb; dsv4::Dsv4Config cb; std::string eb;
-        CHECK(dsv4::gguf_read_header({"/tmp/dsv4_bad.gguf"}, hb, eb));
+        CHECK(dsv4::gguf_read_header({bad_path}, hb, eb));
         CHECK(!dsv4::config_from_gguf(hb, cb, eb));
+    }
+    {
+        W malformed; uint64_t nm = 0;
+        write_file(overflow_path, malformed, nm, {{"overflow", {UINT64_MAX, 2}, T_F32}});
+        dsv4::GgufHeader hm; std::string em;
+        CHECK(!dsv4::gguf_read_header({overflow_path}, hm, em));
+        CHECK(em.find("dimensions overflow") != std::string::npos);
+    }
+    {
+        const uint8_t bytes[] = {1, 3, 5, 7, 9, 11, 13, 15};
+        FILE* f = dsv4::open_binary_file(raw_path, true);
+        CHECK(f != nullptr);
+        if (f) { CHECK(std::fwrite(bytes, 1, sizeof(bytes), f) == sizeof(bytes)); std::fclose(f); }
+        dsv4::ReadOnlyFile mapped; std::string em;
+        CHECK(mapped.open(raw_path, em));
+        CHECK(mapped.size() == sizeof(bytes));
+        uint8_t got[3] = {};
+        CHECK(mapped.read_at(2, got, sizeof(got)));
+        CHECK(got[0] == 5 && got[1] == 7 && got[2] == 9);
+        CHECK(!mapped.read_at(7, got, sizeof(got)));
+    }
+    {
+        // This is a sparse logical file: only the sentinel bytes occupy storage.
+        // Reading it exercises offsets beyond the 32-bit boundary on both platforms.
+        constexpr uint64_t offset = (1ULL << 32) + 12345;
+        const uint8_t sentinel[] = {0x5a, 0xa5, 0x3c, 0xc3};
+        CHECK(write_sparse_sentinel(sparse_path, offset, sentinel, sizeof(sentinel)));
+        dsv4::ReadOnlyFile mapped; std::string em;
+        CHECK(mapped.open(sparse_path, em));
+        CHECK(mapped.size() == offset + sizeof(sentinel));
+        uint8_t got[sizeof(sentinel)] = {};
+        CHECK(mapped.read_at(offset, got, sizeof(got)));
+        CHECK(std::memcmp(got, sentinel, sizeof(got)) == 0);
+    }
+    {
+        auto write_bytes = [](const std::string& path, const char* text, size_t size) {
+            FILE* f = dsv4::open_binary_file(path, true);
+            if (!f) return false;
+            bool ok = std::fwrite(text, 1, size, f) == size;
+            if (std::fclose(f) != 0) ok = false;
+            return ok;
+        };
+        CHECK(write_bytes(replace_path, "old-profile", 11));
+        CHECK(write_bytes(replace_tmp, "new-profile-data", 16));
+        CHECK(dsv4::atomic_replace_file(replace_tmp, replace_path));
+        FILE* f = dsv4::open_binary_file(replace_path, false);
+        CHECK(f != nullptr);
+        if (f) {
+            char got[16] = {};
+            CHECK(std::fread(got, 1, sizeof(got), f) == sizeof(got));
+            CHECK(std::memcmp(got, "new-profile-data", sizeof(got)) == 0);
+            CHECK(std::fgetc(f) == EOF);
+            std::fclose(f);
+        }
     }
 
     dsv4::ExpertInventory inv;
@@ -224,5 +331,8 @@ int main() {
         std::printf("--- startup report (P=50) ---\n%s", dsv4::plan_report(in, p).c_str());
     }
     std::printf("%s\n", g_fail ? "TESTS FAILED" : "ALL TESTS PASSED");
+    std::error_code ignored;
+    for (const std::string& p : {f1, f2, f3, bad_path, overflow_path, raw_path, sparse_path, replace_path, replace_tmp})
+        std::filesystem::remove(p, ignored);
     return g_fail ? 1 : 0;
 }

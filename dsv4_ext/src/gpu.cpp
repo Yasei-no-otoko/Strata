@@ -26,6 +26,7 @@ bool g_ready = false;
 }  // namespace
 
 bool is_emulated() { return true; }
+const char* backend_name() { return "cpu-emulated"; }
 
 bool init(std::string& err) {
     if (g_ready) return true;

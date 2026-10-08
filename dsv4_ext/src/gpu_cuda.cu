@@ -26,7 +26,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include <cuda_runtime.h>
+#include "dsv4/device_runtime.hpp"
 
 namespace dsv4 {
 namespace gpu {
@@ -39,7 +39,7 @@ bool g_cuda_err = false;
 
 bool check(cudaError_t e, const char* what) {
     if (e == cudaSuccess) return true;
-    if (!g_cuda_err) std::fprintf(stderr, "CUDA error at %s: %s\n", what, cudaGetErrorString(e));
+    if (!g_cuda_err) std::fprintf(stderr, "%s error at %s: %s\n", backend_name(), what, cudaGetErrorString(e));
     g_cuda_err = true;
     return false;
 }
@@ -168,13 +168,27 @@ bool supported(uint32_t type) {
 
 // ================================================================================================
 bool is_emulated() { return false; }
+const char* backend_name() {
+#ifdef DSV4_USE_HIP
+    return "hip";
+#else
+    return "cuda";
+#endif
+}
 
 bool init(std::string& err) {
     if (g_ready) return true;
     int ndev = 0;
-    if (!check(cudaGetDeviceCount(&ndev), "cudaGetDeviceCount")) { err = "no CUDA device"; return false; }
-    if (ndev == 0) { err = "no CUDA device visible"; return false; }
-    if (!check(cudaSetDevice(0), "cudaSetDevice")) { err = "cannot select CUDA device 0"; return false; }
+    if (!check(cudaGetDeviceCount(&ndev), "get device count")) { err = std::string("cannot initialize ") + backend_name(); return false; }
+    if (ndev == 0) { err = std::string("no ") + backend_name() + " device visible"; return false; }
+    if (!check(cudaSetDevice(0), "select device")) { err = "cannot select device 0"; return false; }
+    cudaDeviceProp prop{};
+    if (!check(cudaGetDeviceProperties(&prop, 0), "get device properties")) { err = "cannot read device properties"; return false; }
+#ifdef DSV4_USE_HIP
+    std::fprintf(stderr, "dsv4: HIP device 0: %s (arch %s, wave%d)\n", prop.name, prop.gcnArchName, prop.warpSize);
+#else
+    std::fprintf(stderr, "dsv4: CUDA device 0: %s (sm_%d%d)\n", prop.name, prop.major, prop.minor);
+#endif
     size_t free_b = 0, total_b = 0;
     if (!check(cudaMemGetInfo(&free_b, &total_b), "cudaMemGetInfo")) { err = "cannot read VRAM size"; return false; }
     g_total = total_b; g_used = 0;
@@ -203,7 +217,7 @@ void* alloc(size_t n) {
     return p;
 }
 
-void release(void* p) { if (p) cudaFree(p); }  // g_used is never decreased: the pool is freed with the model
+void release(void* p) { if (p) check(cudaFree(p), "free"); }  // g_used is never decreased: the pool is freed with the model
 
 void mem_info(size_t* free_bytes, size_t* total_bytes) {
     size_t f = 0, t = 0;

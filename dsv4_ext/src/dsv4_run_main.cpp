@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
     Model m; std::string err;
     auto t0 = std::chrono::steady_clock::now();
     if (!m.load(shards, o, err)) { std::fprintf(stderr, "error: %s\n", err.c_str()); return 1; }
-    std::fprintf(stderr, "loaded in %.1f s (%s)\n", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), o.gpu ? (gpu::is_emulated() ? "GPU EMULATED on CPU" : "CUDA") : "CPU only");
+    std::fprintf(stderr, "loaded in %.1f s (%s)\n", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), o.gpu ? gpu::backend_name() : "CPU only");
     // selfcheck prints a table on stdout; in --serve that channel is the protocol, so it stays out of it.
     if (selfcheck && serve) std::fprintf(stderr, "note: --selfcheck is skipped with --serve (stdout is the protocol)\n");
     else if (selfcheck) m.selfcheck();

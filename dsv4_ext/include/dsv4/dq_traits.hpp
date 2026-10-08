@@ -57,6 +57,16 @@
 
 namespace dqt {
 
+// MSVC's C runtime memcpy is host-only in HIP compilation. The compiler builtin
+// lowers these fixed-size, possibly unaligned bit copies directly on the device.
+DSV4_HOST_DEVICE void copy_bits(void* dst, const void* src, size_t n) {
+#if defined(__HIP_DEVICE_COMPILE__)
+    __builtin_memcpy(dst, src, n);
+#else
+    std::memcpy(dst, src, n);
+#endif
+}
+
 DSV4_HOST_DEVICE float mxfp4_value(int q) {
     const int m = q & 7;
     // m == 0 must return +0.0f, not -0.0f: ggml stores a literal 0 in the table and the trait test
@@ -70,22 +80,22 @@ DSV4_HOST_DEVICE float mxfp4_value(int q) {
 // DSV4_HOST_DEVICE on every one of them: nvcc rejects a __host__-only helper called from a kernel, and
 // these are the leaf calls of every at() below. The macro already carries `inline` on the host, so do not
 // write it again.
-DSV4_HOST_DEVICE uint16_t ld16(const uint8_t* p) { uint16_t v; std::memcpy(&v, p, 2); return v; }
-DSV4_HOST_DEVICE uint32_t ld32(const uint8_t* p) { uint32_t v; std::memcpy(&v, p, 4); return v; }
-DSV4_HOST_DEVICE float    ldff(const uint8_t* p) { float v;   std::memcpy(&v, p, 4); return v; }
+DSV4_HOST_DEVICE uint16_t ld16(const uint8_t* p) { uint16_t v; copy_bits(&v, p, 2); return v; }
+DSV4_HOST_DEVICE uint32_t ld32(const uint8_t* p) { uint32_t v; copy_bits(&v, p, 4); return v; }
+DSV4_HOST_DEVICE float    ldff(const uint8_t* p) { float v;   copy_bits(&v, p, 4); return v; }
 
 DSV4_HOST_DEVICE float f16_to_f32(uint16_t h) {
     const uint32_t sign = (uint32_t)(h >> 15) & 1u, exp = (h >> 10) & 0x1fu, frac = h & 0x3ffu;
     float out;
     if (exp == 0) out = (float) frac * (1.0f / 16777216.0f);
     else if (exp == 31) out = frac ? NAN : INFINITY;
-    else { const uint32_t bits = (exp << 23) + (frac << 13) + ((127u - 15u) << 23); std::memcpy(&out, &bits, 4); }
+    else { const uint32_t bits = (exp << 23) + (frac << 13) + ((127u - 15u) << 23); copy_bits(&out, &bits, 4); }
     return sign ? -out : out;
 }
-DSV4_HOST_DEVICE float bf16_to_f32(uint16_t h) { const uint32_t bits = (uint32_t) h << 16; float f; std::memcpy(&f, &bits, 4); return f; }
+DSV4_HOST_DEVICE float bf16_to_f32(uint16_t h) { const uint32_t bits = (uint32_t) h << 16; float f; copy_bits(&f, &bits, 4); return f; }
 DSV4_HOST_DEVICE float e8m0_to_fp32_half(uint8_t x) {
     const uint32_t bits = x < 2 ? (0x00200000u << x) : ((uint32_t)(x - 1) << 23);
-    float f; std::memcpy(&f, &bits, 4); return f;
+    float f; copy_bits(&f, &bits, 4); return f;
 }
 DSV4_HOST_DEVICE void get_scale_min_k4(int j, const uint8_t* q, uint8_t* d, uint8_t* m) {
     if (j < 4) { *d = q[j] & 63; *m = q[j + 4] & 63; }
@@ -152,7 +162,7 @@ struct IQ3_XXST { static constexpr int BE = 256, BB = 98;
         const float d = f16_to_f32(ld16(b));
         const uint8_t* qs = b + 2; const uint8_t* sss = qs + 64;
         const int ib32 = (e & 255) >> 5, l = (e & 31) >> 3, j = e & 7;
-        uint32_t aux32; std::memcpy(&aux32, sss + 4 * ib32, sizeof(aux32));
+        uint32_t aux32; copy_bits(&aux32, sss + 4 * ib32, sizeof(aux32));
         const float db = d * (0.5f + (aux32 >> 28)) * 0.5f;
         const uint8_t signs = G_ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
         const uint8_t* g = (const uint8_t*)(G_iq3xxs_grid + qs[ib32 * 8 + 2 * l + ((j >= 4) ? 1 : 0)]);
@@ -164,7 +174,7 @@ struct IQ2_XXST { static constexpr int BE = 256, BB = 66;
         const uint8_t* b = w + (int64_t)(e >> 8) * BB;
         const float d = f16_to_f32(ld16(b)); const uint8_t* qs = b + 2;
         const int ib32 = (e & 255) >> 5, l = (e & 31) >> 3, j = e & 7;
-        uint32_t aux32[2]; std::memcpy(aux32, qs + 8 * ib32, 2 * sizeof(uint32_t));
+        uint32_t aux32[2]; copy_bits(aux32, qs + 8 * ib32, 2 * sizeof(uint32_t));
         const uint8_t* aux8 = (const uint8_t*) aux32;
         const float db = d * (0.5f + (aux32[1] >> 28)) * 0.25f;
         const uint8_t* g = (const uint8_t*)(G_iq2xxs_grid + aux8[l]);

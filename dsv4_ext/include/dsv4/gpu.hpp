@@ -1,7 +1,8 @@
-// dsv4/gpu.hpp - device layer, TWO interchangeable backends behind one API:
+// dsv4/gpu.hpp - interchangeable device backends behind one API:
 //   src/gpu.cpp       CPU-emulated device (malloc "VRAM", memcpy H2D/D2H, ggml-identical matvecs).
 //                     Always buildable, and what the tests run against.
 //   src/gpu_cuda.cu   real CUDA device (built by build.sh --cuda / cmake -DDSV4_WITH_CUDA=ON).
+//                     The same kernels target AMD with cmake -DDSV4_WITH_HIP=ON.
 // Both define exactly the same dsv4::gpu symbols, so a binary links ONE of them; the loader, the memory
 // plan and the HIT/MISS tier above this header never know which.
 #pragma once
@@ -44,6 +45,8 @@ bool staging(uint8_t* device_pool, size_t bytes);
 bool has_staging();
 
 bool is_emulated();
+/// Backend compiled into this binary, also used by logs and the serving protocol.
+const char* backend_name();
 bool init(std::string& err);
 void* alloc(size_t n);
 void release(void* p);

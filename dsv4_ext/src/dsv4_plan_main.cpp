@@ -44,11 +44,19 @@ static std::vector<std::string> expand_shards(const std::string& p) {
 }
 
 static bool nvidia_smi(long long& total_mib, long long& free_mib) {
+#if defined(_WIN32)
+    FILE* f = _popen("nvidia-smi --query-gpu=memory.total,memory.free --format=csv,noheader,nounits 2>NUL", "r");
+#else
     FILE* f = popen("nvidia-smi --query-gpu=memory.total,memory.free --format=csv,noheader,nounits 2>/dev/null", "r");
+#endif
     if (!f) return false;
     long long t = 0, fr = 0;
     const bool ok = std::fscanf(f, "%lld, %lld", &t, &fr) == 2;
+#if defined(_WIN32)
+    _pclose(f);
+#else
     pclose(f);
+#endif
     if (ok) { total_mib = t; free_mib = fr; }
     return ok;
 }

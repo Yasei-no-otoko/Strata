@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.24)
 project(dsv4_strata_ext LANGUAGES CXX)
 enable_testing()
 
@@ -10,8 +10,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Con -DDSV4_WITH_CUDA=ON si compila src/gpu_cuda.cu AL POSTO di src/gpu.cpp: i due backend
 # definiscono gli stessi simboli dsv4::gpu, quindi non possono mai stare nello stesso binario.
 option(DSV4_WITH_CUDA "Build the real CUDA device layer (src/gpu_cuda.cu) instead of the CPU-emulated one" OFF)
+option(DSV4_WITH_HIP "Build the real AMD HIP device layer" OFF)
+if(DSV4_WITH_CUDA AND DSV4_WITH_HIP)
+    message(FATAL_ERROR "Select only one of DSV4_WITH_CUDA and DSV4_WITH_HIP")
+endif()
 
-if(DSV4_WITH_CUDA)
+if(DSV4_WITH_HIP)
+    enable_language(HIP)
+    find_package(hip CONFIG REQUIRED)
+    set(DSV4_GPU_SRC src/gpu_cuda.cu)
+    set_source_files_properties(${DSV4_GPU_SRC} PROPERTIES LANGUAGE HIP)
+elseif(DSV4_WITH_CUDA)
     # sm_89 = RTX 4090 di questa macchina. Per un'altra scheda: -DCMAKE_CUDA_ARCHITECTURES="80;89".
     # Va impostato PRIMA di enable_language(CUDA): dopo, cmake ha gia' messo il suo default (52) nella
     # cache e "NOT DEFINED" non lo vede piu', quindi il kernel verrebbe compilato per la scheda sbagliata.
@@ -56,6 +65,14 @@ add_library(dsv4_core
 
 # Riferiamo i percorsi d'inclusione interni al modulo
 target_include_directories(dsv4_core PUBLIC include)
+if(WIN32)
+    target_compile_definitions(dsv4_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+endif()
+if(DSV4_WITH_HIP)
+    target_compile_definitions(dsv4_core PRIVATE DSV4_USE_HIP=1)
+    target_link_libraries(dsv4_core PUBLIC hip::host)
+    set_target_properties(dsv4_core PROPERTIES HIP_STANDARD 20 HIP_STANDARD_REQUIRED ON)
+endif()
 
 if(OpenMP_CXX_FOUND)
     target_link_libraries(dsv4_core PUBLIC OpenMP::OpenMP_CXX)
@@ -84,5 +101,10 @@ target_link_libraries(test_dq_traits PRIVATE dsv4_core)
 add_test(NAME core COMMAND test_dsv4_core)
 add_test(NAME ops COMMAND test_ops ${CMAKE_CURRENT_SOURCE_DIR}/tests/golden.txt)
 add_test(NAME dq_traits COMMAND test_dq_traits)
+if(DSV4_WITH_HIP OR DSV4_WITH_CUDA)
+    add_executable(test_gpu tests/test_gpu.cpp)
+    target_link_libraries(test_gpu PRIVATE dsv4_core)
+    add_test(NAME gpu COMMAND test_gpu)
+endif()
 # -DDSV4_WITH_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89   (usa src/gpu_cuda.cu al posto di src/gpu.cpp)
 # -DSTRATA_ROOT=/path/to/Strata   (Strata e' solo LETTO: include paths + link, mai modificato)

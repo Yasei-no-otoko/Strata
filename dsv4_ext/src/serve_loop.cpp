@@ -3,9 +3,9 @@
 // stdout is the protocol and NOTHING ELSE: every human line of this build goes to stderr, because
 // Strata's serve/server.py reads stdout line by line (READY / INFO / T / PP / DONE / ERR).
 //
-// stdin is read with raw read(2) through our own buffer rather than std::cin: that keeps a single owner of
-// the pipe and lets a STOP be noticed BETWEEN TOKENS (select() with a zero timeout), which a buffered
-// std::cin cannot promise.
+// stdin is read through our own byte buffer rather than std::cin: that keeps a single owner of the pipe and
+// lets a STOP be noticed between tokens. POSIX polls with select(); Windows checks anonymous-pipe bytes with
+// PeekNamedPipe before reading, so neither implementation waits for a complete line during generation.
 #include "dsv4/serve_loop.hpp"
 
 #include "dsv4/gpu.hpp"
@@ -21,8 +21,17 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <fcntl.h>
+#include <io.h>
+#else
 #include <sys/select.h>
 #include <unistd.h>
+#endif
 
 namespace dsv4 {
 
@@ -31,6 +40,14 @@ namespace {
 /// Line reader over fd 0 (a pipe from serve/server.py).
 class LineReader {
 public:
+#if defined(_WIN32)
+    LineReader() {
+        (void) _setmode(_fileno(stdin), _O_BINARY);
+        const intptr_t raw = _get_osfhandle(_fileno(stdin));
+        input_ = raw == -1 ? INVALID_HANDLE_VALUE : reinterpret_cast<HANDLE>(raw);
+        is_pipe_ = input_ != INVALID_HANDLE_VALUE && GetFileType(input_) == FILE_TYPE_PIPE;
+    }
+#endif
     /// Blocks for the next command line. "" on EOF.
     bool next(std::string& out) {
         for (;;) {
@@ -57,6 +74,27 @@ private:
     }
     /// `block`: wait for data. False: poll only. False also on EOF or error.
     bool fill(bool block) {
+#if defined(_WIN32)
+        if (input_ == INVALID_HANDLE_VALUE) { eof_ = true; return false; }
+        DWORD available = 0;
+        for (;;) {
+            if (is_pipe_) {
+                if (!PeekNamedPipe(input_, nullptr, 0, nullptr, &available, nullptr)) { eof_ = true; return false; }
+                if (available > 0) break;
+            } else {
+                if (!block) return false;  // STOP polling is used with the server's anonymous pipe.
+                break;
+            }
+            if (!block) return false;
+            Sleep(1);
+        }
+        char tmp[4096];
+        const unsigned want = is_pipe_ ? (available < sizeof(tmp) ? available : (unsigned) sizeof(tmp)) : (unsigned) sizeof(tmp);
+        const int n = _read(_fileno(stdin), tmp, want);
+        if (n <= 0) { eof_ = true; return false; }
+        buf_.append(tmp, (size_t) n);
+        return true;
+#else
         if (!block) {
             fd_set rs;
             FD_ZERO(&rs);
@@ -69,9 +107,14 @@ private:
         if (n <= 0) { eof_ = true; return false; }
         buf_.append(tmp, (size_t) n);
         return true;
+#endif
     }
     std::string buf_;
     bool eof_ = false;
+#if defined(_WIN32)
+    HANDLE input_ = INVALID_HANDLE_VALUE;
+    bool is_pipe_ = false;
+#endif
 };
 
 bool starts(const std::string& s, const char* p) {
@@ -143,7 +186,7 @@ int serve_loop(Model& m, const RunOpts& o, const std::vector<int>& eos_ids) {
     std::printf("INFO n_expert=%d\n", c.n_expert);
     std::printf("INFO n_expert_used=%d\n", c.n_expert_used);
     std::printf("INFO vocab=%d\n", (int) c.vocab);
-    std::printf("INFO device=%s\n", o.gpu ? (gpu::is_emulated() ? "cpu-emulated" : "cuda") : "cpu");
+    std::printf("INFO device=%s\n", o.gpu ? gpu::backend_name() : "cpu");
     // One request at a time: no batch slots, so server.py keeps its FIFO (batch stays 0).
     // "stop" says a STOP line is honoured, which the LineReader below does between tokens.
     std::printf("READY %d stop\n", o.ctx);

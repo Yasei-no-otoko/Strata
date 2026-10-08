@@ -5,10 +5,7 @@
 #include "dsv4/mem_plan.hpp"
 #include "dsv4/ops.hpp"
 
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "dsv4/platform_file.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -20,6 +17,11 @@
 #include <numeric>
 #include <thread>
 #include <unordered_map>
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -167,7 +169,7 @@ struct Model::Impl {
     GgufHeader h;
     ExpertInventory inv;
     std::unordered_map<std::string, const GgufTensor*> by_name;
-    std::vector<const uint8_t*> maps; std::vector<size_t> map_len;
+    std::vector<ReadOnlyFile> maps;
     std::vector<Layer> L;
     int nrun = 0, hd = 0, rd = 0, win = 0, dim = 0, hc = 4;
     Tn embd, outw, outnorm, out_hc_fn, out_hc_base, out_hc_scale;
@@ -185,7 +187,6 @@ struct Model::Impl {
 
     ~Impl() {
         for (void* p : allocs) gpu::release(p);
-        for (size_t i = 0; i < maps.size(); ++i) if (maps[i]) munmap((void*) maps[i], map_len[i]);
     }
     // vram_used counts every byte handed out by the device layer, so the residency plan can subtract the
     // weights and scratch that are ALREADY on the card instead of guessing at them. On the CUDA backend
@@ -198,7 +199,7 @@ struct Model::Impl {
         Tn t;
         auto it = by_name.find(name);
         if (it == by_name.end()) { if (required && err.empty()) err = "missing tensor: " + name; return t; }
-        t.g = it->second; t.h = maps[(size_t) t.g->shard] + t.g->abs_offset; t.type = t.g->type;
+        t.g = it->second; t.h = maps[(size_t) t.g->shard].data() + t.g->abs_offset; t.type = t.g->type;
         t.in = (int64_t) t.g->dims[0]; t.out = t.g->dims.size() > 1 ? (int64_t) t.g->dims[1] : 1; t.ne = t.g->dims.size() > 2 ? (int64_t) t.g->dims[2] : 1;
         t.rb = row_bytes(t.type, t.in);
         return t;
@@ -297,7 +298,7 @@ struct Model::Impl {
 
     // ------------------------------------------------------------ profile
     bool profile_load(const std::string& path, std::string& err) {
-        FILE* f = std::fopen(path.c_str(), "rb");
+        FILE* f = open_binary_file(path, false);
         if (!f) { err = "cannot open profile " + path; return false; }
         char magic[8]; uint32_t ver, nl, ne; uint64_t mh;
         bool ok = std::fread(magic, 1, 8, f) == 8 && std::fread(&ver, 4, 1, f) == 1 && std::fread(&nl, 4, 1, f) == 1 && std::fread(&ne, 4, 1, f) == 1 && std::fread(&mh, 8, 1, f) == 1;
@@ -337,36 +338,23 @@ struct Model::Impl {
 #endif
         for (const GgufTensor& t : h.tensors) by_name[t.name] = &t;
         for (const std::string& f : h.files) {
-            int fd = ::open(f.c_str(), O_RDONLY);
-            struct stat sb;
-            if (fd < 0 || fstat(fd, &sb) != 0) { err = "cannot open " + f; return false; }
-            void* m = mmap(nullptr, (size_t) sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
-            ::close(fd);
-            if (m == MAP_FAILED) { err = "mmap failed for " + f; return false; }
-            // MADV_RANDOM switches the kernel's readahead OFF. We never touch a single byte at a time: an
-            // expert is three contiguous runs (gate|up|down, ~5.5 MiB) and a matvec walks whole rows, so
-            // demand paging at page granularity is already efficient.
-            //
-            // WILLNEED was the wrong advice here: it asks the kernel to prefetch the WHOLE shard, which on
-            // an 80 GiB model in front of a machine with less free RAM than that evicts the pages the very
-            // next forward pass needs. The page cache then thrashes on every token and the miss path reads
-            // the disk again. RANDOM keeps the cache for what is actually touched.
-            madvise(m, (size_t) sb.st_size, MADV_RANDOM);
-            maps.push_back((const uint8_t*) m); map_len.push_back((size_t) sb.st_size);
+            ReadOnlyFile mapped;
+            if (!mapped.open(f, err)) return false;
+            maps.push_back(std::move(mapped));
         }
         // Every tensor must lie inside its shard: a truncated or mismatched file would otherwise
         // turn into a segfault deep inside the dequantiser.
         for (const GgufTensor& t : h.tensors) {
             if (t.shard < 0 || (size_t) t.shard >= maps.size()) { err = "tensor " + t.name + " refers to a missing shard"; return false; }
-            const uint64_t need = t.nbytes ? t.abs_offset + t.nbytes : t.abs_offset;
-            if (need > map_len[(size_t) t.shard]) {
+            const uint64_t shard_size = maps[(size_t) t.shard].size();
+            if (t.abs_offset > shard_size || (t.nbytes && t.nbytes > shard_size - t.abs_offset)) {
                 err = "tensor " + t.name + " (" + ggml_type_str(t.type) + ", " + std::to_string(t.nbytes) +
                       " bytes at offset " + std::to_string(t.abs_offset) + ") is outside " + h.files[(size_t) t.shard] +
-                      " (" + std::to_string(map_len[(size_t) t.shard]) + " bytes): the shard is truncated or the GGUF is inconsistent";
+                      " (" + std::to_string(shard_size) + " bytes): the shard is truncated or the GGUF is inconsistent";
                 return false;
             }
         }
-        ph("mmap + header checks done");
+        ph("read-only shard mappings and header checks done");
         model_hash = 1469598103934665603ULL;
         for (uint64_t v : {(uint64_t) c.n_layer, (uint64_t) c.n_expert, (uint64_t) c.ff_exp, (uint64_t) c.n_embd, (uint64_t) h.tensors.size()}) model_hash = fnv(model_hash, v);
         for (uint64_t b : inv.bytes_per_expert) model_hash = fnv(model_hash, b);
@@ -539,16 +527,9 @@ struct Model::Impl {
         // so a memcpy page-faults 4 KiB at a time and a cold start crawled at 70-300 MB/s. An expert is three
         // contiguous runs, so pread() issues MiB-sized reads and keeps the NVMe queue full.
         uint64_t ram_bytes = 0; int ram_n = 0;
-        std::vector<int> sfd;
-        for (const std::string& f : h.files) sfd.push_back(::open(f.c_str(), O_RDONLY));
         auto rd = [&](const Tn& t, size_t off, uint8_t* dst, size_t len) {
-            const int fd = sfd[(size_t) t.g->shard];
-            size_t done = 0;
-            while (done < len) {
-                const ssize_t n = fd >= 0 ? ::pread(fd, dst + done, len - done, (off_t) (t.g->abs_offset + off + done)) : -1;
-                if (n <= 0) { std::memcpy(dst + done, t.h + off + done, len - done); break; }   // fallback: the old mmap path
-                done += (size_t) n;
-            }
+            const uint64_t offset = t.g->abs_offset + static_cast<uint64_t>(off);
+            if (!maps[(size_t) t.g->shard].read_at(offset, dst, len)) std::memcpy(dst, t.h + off, len);
         };
         for (int l = 0; l < nrun; ++l) {
             Layer& y = L[(size_t) l];
@@ -564,7 +545,6 @@ struct Model::Impl {
             }
             ram_bytes += y.ram.size(); ram_n += n;
         }
-        for (int fd : sfd) if (fd >= 0) ::close(fd);
         ph("experts copied to RAM");
         // // ---- LRU arena for MISS experts: a host-RAM budget split over the layers, one slot per expert.
         // Without it a miss is a fresh mmap read of bpe bytes per expert per token, which on a model bigger
@@ -616,7 +596,7 @@ struct Model::Impl {
             if (o.gpu) {
                 size_t fb2 = 0, tb2 = 0; gpu::mem_info(&fb2, &tb2);
                 std::fprintf(stderr, "device: %s | VRAM %.2f/%.2f GiB used, %.2f GiB free (weights %.2f GiB, scratch %.2f GiB)\n",
-                             gpu::is_emulated() ? "CPU-EMULATED" : "CUDA",
+                             gpu::backend_name(),
                              vram_used / 1073741824.0, tb2 / 1073741824.0, fb2 / 1073741824.0,
                              (vram_used - vram_scratch) / 1073741824.0, vram_scratch / 1073741824.0);
             }
@@ -872,13 +852,23 @@ struct Model::Impl {
     bool save_profile(std::string& err) const {
         if (o.profile_out.empty()) return true;
         const std::string tmp = o.profile_out + ".tmp";
-        FILE* f = std::fopen(tmp.c_str(), "wb");
+        FILE* f = open_binary_file(tmp, true);
         if (!f) { err = "cannot write " + tmp; return false; }
         const uint32_t ver = 1, nl = (uint32_t) c.n_layer, ne = (uint32_t) c.n_expert;
-        std::fwrite("DSV4PROF", 1, 8, f); std::fwrite(&ver, 4, 1, f); std::fwrite(&nl, 4, 1, f); std::fwrite(&ne, 4, 1, f); std::fwrite(&model_hash, 8, 1, f);
-        for (int l = 0; l < c.n_layer; ++l) std::fwrite(L[(size_t) l].freq.data(), 8, (size_t) c.n_expert, f);
-        std::fflush(f); fsync(fileno(f)); std::fclose(f);
-        if (std::rename(tmp.c_str(), o.profile_out.c_str()) != 0) { err = "rename failed for " + o.profile_out; return false; }
+        bool ok = std::fwrite("DSV4PROF", 1, 8, f) == 8 && std::fwrite(&ver, 4, 1, f) == 1 &&
+                  std::fwrite(&nl, 4, 1, f) == 1 && std::fwrite(&ne, 4, 1, f) == 1 &&
+                  std::fwrite(&model_hash, 8, 1, f) == 1;
+        for (int l = 0; ok && l < c.n_layer; ++l)
+            ok = std::fwrite(L[(size_t) l].freq.data(), 8, (size_t) c.n_expert, f) == (size_t) c.n_expert;
+        if (std::fflush(f) != 0) ok = false;
+#if defined(_WIN32)
+        if (_commit(_fileno(f)) != 0) ok = false;
+#else
+        if (fsync(fileno(f)) != 0) ok = false;
+#endif
+        if (std::fclose(f) != 0) ok = false;
+        if (!ok) { err = "failed to write and sync profile " + tmp; return false; }
+        if (!atomic_replace_file(tmp, o.profile_out)) { err = "cannot atomically replace profile " + o.profile_out; return false; }
         return true;
     }
 
@@ -888,7 +878,7 @@ struct Model::Impl {
         std::printf("dequantisation self-check (first 3 rows of the first tensor of each type; weights should be finite, ~zero mean, small):\n");
         for (auto& kv : first) {
             const GgufTensor& t = *kv.second;
-            const uint8_t* base = maps[(size_t) t.shard] + t.abs_offset;
+            const uint8_t* base = maps[(size_t) t.shard].data() + t.abs_offset;
             const int64_t in = (int64_t) t.dims[0]; const size_t rb = row_bytes(t.type, in);
             std::vector<float> v((size_t) in * 3);
             for (int r = 0; r < 3; ++r) dequant_row(t.type, base + (size_t) r * rb, in, &v[(size_t) r * in]);

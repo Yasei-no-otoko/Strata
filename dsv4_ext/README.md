@@ -18,6 +18,61 @@ nothing in it is modified. Regenerate manually with:
 
 (If your filesystem is mounted noexec, build.sh falls back to /tmp/dsv4_build automatically.)
 
+## Windows HIP (experimental)
+
+The extension can also compile its device kernels for AMD HIP. It uses the same
+quantization and MoE kernel source as CUDA, with a small runtime adapter. Windows
+uses read-only file mappings and offset-based reads for the GGUF shards, and pipe
+polling for serving cancellation. The existing Strata installation is not replaced.
+
+Use Visual Studio 2022 C++ Build Tools, CMake 3.24+, Ninja, and an initialized
+TheRock ROCm environment from Strata's Windows build setup (`docs/AMD_HIP.md`). In
+a command prompt, set the existing environment path and the card's architecture:
+
+```bat
+set ROCM_VENV=C:\path\to\Strata\.rocm-win
+set DSV4_HIP_ARCHS=gfx1030
+dsv4_ext\build_windows_hip.bat
+dsv4_ext\run_windows_hip.bat ctest --test-dir dsv4_ext/build-hip-win --output-on-failure
+```
+
+The local developer launcher adds ROCm and Visual Studio's LLVM OpenMP runtime to
+PATH for its child process. It does not install or distribute the OpenMP runtime.
+The build copies the matching HIP runtime and comgr DLLs beside the executable so
+Windows does not load an incompatible copy from System32. Keep them together.
+
+With CMake directly, select `-DDSV4_WITH_HIP=ON -DDSV4_WITH_CUDA=OFF`, the ROCm
+Clang C++ and HIP compilers, and `-DCMAKE_HIP_ARCHITECTURES=<your architecture>`.
+CUDA and HIP are mutually exclusive. The CPU-only build remains the default.
+
+Initial validation on Windows 11 / RX 6900 XT (gfx1030), Threadripper 3990X,
+128 GiB RAM, ROCm `10.2.0a20260930` and Clang 24:
+
+- All four CTest tests passed, including real-device matvecs for the ten supported
+  types and resident/staged expert MoE comparisons against the CPU reference.
+- The synthetic four-layer model matched the NumPy reference at all 26 positions
+  (argmax 26/26, maximum absolute logit difference `1.19e-6`). This is not evidence
+  of real-model answer quality or throughput.
+
+For a first real-model run, use a short context and avoid a second full expert copy:
+
+```bat
+dsv4_ext\run_windows_hip.bat dsv4_run.exe --model C:\models\DeepSeek-V4-Flash-UD-IQ1_M-00001-of-00003.gguf --selfcheck --ctx 512 --threads 16 --expert-ram profile --ram-cache-mib 0 --expert-vram-reserve-mib 4096
+```
+
+All three model shards are required (about 86.9 GB for Unsloth UD-IQ1_M). File size
+is not peak RAM. Start without an expert profile; `--expert-ram all` makes another
+large RAM copy. Keep desktop VRAM headroom: Windows HIP's free-memory report can
+overstate the process budget. A small `--expert-cache` is also useful when validating
+the staged transfer path. The log must identify `HIP device`, the card and architecture,
+and `loaded ... (hip)`; CPU emulation is not a GPU test.
+
+For the API, pass the same memory options to `tools/serve_dsv4.py --hip`, optionally
+`--exe <build>/dsv4_run.exe`, and repeat `--lib-dir` for required runtime directories,
+or launch Python through `run_windows_hip.bat`. The wrapper checks that a requested
+HIP backend actually reports `device=hip`. Keep the default `127.0.0.1`; non-loopback
+serving requires `--api-key`.
+
 ## Inspect your real GGUF (all 3 shards, header only)
 
     python3 tools/dump_gguf_shapes.py DeepSeek-V4-Flash-UD-IQ1_M-0000{1,2,3}-of-00003.gguf > shapes.txt

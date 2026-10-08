@@ -124,7 +124,10 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True, help="the FIRST shard of the GGUF (…-00001-of-00003.gguf)")
     ap.add_argument("--exe", default=None, help="the dsv4_run binary (default: build-out/dsv4_run, or dsv4_run_cuda with --cuda)")
-    ap.add_argument("--cuda", action="store_true", help="use build-out/dsv4_run_cuda: real CUDA device layer (sh build.sh --cuda)")
+    device = ap.add_mutually_exclusive_group()
+    device.add_argument("--cuda", action="store_true", help="use build-out/dsv4_run_cuda: real CUDA device layer (sh build.sh --cuda)")
+    device.add_argument("--hip", action="store_true", help="use the native AMD HIP engine (build_windows_hip.bat on Windows)")
+    ap.add_argument("--lib-dir", action="append", default=[], help="runtime DLL/library directory for the engine (repeatable)")
     ap.add_argument("--port", type=int, default=8095)
     ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to also answer to your network (set --api-key)")
     ap.add_argument("--ctx", type=int, default=2048, help="the engine's context (READY <ctx>)")
@@ -159,15 +162,18 @@ def main() -> int:
     a = ap.parse_args()
 
     if a.exe is None:
-        a.exe = str(EXT_ROOT / "build-out" / ("dsv4_run_cuda" if a.cuda else "dsv4_run"))
+        if a.hip:
+            a.exe = str(EXT_ROOT / ("build-hip-win" if os.name == "nt" else "build-hip") /
+                        ("dsv4_run.exe" if os.name == "nt" else "dsv4_run"))
+        else:
+            a.exe = str(EXT_ROOT / "build-out" / ("dsv4_run_cuda" if a.cuda else "dsv4_run"))
     exe = Path(a.exe).resolve()
     if not exe.exists():
-        raise SystemExit(f"{exe} not found: run sh build.sh"
-                         f"{' --cuda' if a.cuda else ''} first")
-    if exe.name == "dsv4_run" and a.cuda:
-        raise SystemExit("--cuda wants the CUDA binary: pass --exe build-out/dsv4_run_cuda")
-    if a.cuda and a.cpu:
-        raise SystemExit("--cuda and --cpu contradict each other: --cpu disables the device layer entirely")
+        raise SystemExit(f"{exe} not found: build the requested engine first (see dsv4_ext/README.md)")
+    if (a.cuda or a.hip) and a.cpu:
+        raise SystemExit("--cuda/--hip and --cpu contradict each other: --cpu disables the device layer entirely")
+    if a.host not in ("127.0.0.1", "localhost", "::1") and not a.api_key:
+        raise SystemExit("A non-loopback host requires --api-key")
 
     workdir = Path(a.workdir).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
@@ -184,8 +190,8 @@ def main() -> int:
         print("note: --expert-ram all copies every expert into host RAM (tens of GiB): expect the page cache "
               "and the model to fight for memory.", file=sys.stderr, flush=True)
     # The CUDA binary asks the driver for its real free VRAM; the emulated one reads this env var instead.
-    if a.cuda and any(kv.startswith("DSV4_EMULATED_VRAM_MIB=") for kv in (a.engine_env or [])):
-        print("note: DSV4_EMULATED_VRAM_MIB is ignored by the CUDA binary: --expert-vram-pct plans against the\n"
+    if (a.cuda or a.hip) and any(kv.startswith("DSV4_EMULATED_VRAM_MIB=") for kv in (a.engine_env or [])):
+        print("note: DSV4_EMULATED_VRAM_MIB is ignored by the GPU binary: --expert-vram-pct plans against the\n"
               "      driver's real free VRAM (see --expert-vram-reserve-mib / --vram-free-mib to steer it).",
               file=sys.stderr, flush=True)
 
@@ -196,6 +202,8 @@ def main() -> int:
         "log": log,
         "tokenizer": str(tdir),
         "model_name": a.model_name,
+        "backend": "hip" if a.hip else "cuda" if a.cuda else "cpu",
+        "lib_dirs": [str(Path(p).resolve()) for p in a.lib_dir],
     }
     # serve/server.py's child_env() copies cfg["env"] onto the engine process.
     env = {}
@@ -247,6 +255,11 @@ def main() -> int:
 
         def __init__(self, exe_, args, cwd=None, log=None, env=None, lazy=False):
             super().__init__(exe_, args, cwd=cwd, log=log, env=env, lazy=lazy)
+            expected = "hip" if a.hip else "cuda" if a.cuda else None
+            if expected and not lazy and self.info.get("device") != expected:
+                actual = self.info.get("device", "unknown")
+                self.unload()
+                raise RuntimeError(f"Requested {expected} engine, but the executable reported {actual}")
             # StrataEngine looks for --native/--pack; this engine names its model --model.
             self.model_path = next((args[i + 1] for i, x in enumerate(args) if x == "--model"), str(exe_))
             self.info.setdefault("engine", "dsv4_ext")

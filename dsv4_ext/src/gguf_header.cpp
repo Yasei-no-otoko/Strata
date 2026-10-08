@@ -1,8 +1,13 @@
 #include "dsv4/gguf_header.hpp"
+#include "dsv4/platform_file.hpp"
 
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <set>
+#if !defined(_WIN32)
+#include <sys/types.h>
+#endif
 
 namespace dsv4 {
 namespace {
@@ -117,7 +122,7 @@ bool gguf_read_header(const std::vector<std::string>& paths, GgufHeader& out, st
     std::set<std::string> seen;
     for (size_t si = 0; si < paths.size(); ++si) {
         Rd r;
-        r.f = std::fopen(paths[si].c_str(), "rb");
+        r.f = open_binary_file(paths[si], false);
         if (!r.f) { err = "cannot open " + paths[si]; return false; }
         struct Closer { FILE* f; ~Closer() { std::fclose(f); } } closer{r.f};
         char magic[4];
@@ -147,21 +152,47 @@ bool gguf_read_header(const std::vector<std::string>& paths, GgufHeader& out, st
             const char* nm = nullptr; int be = 0, bb = 0;
             t.known_type = ggml_type_info(t.type, &nm, &be, &bb);
             if (t.known_type) {
-                unsigned __int128 elems = 1;
-                for (uint64_t d : t.dims) elems *= d;
+                uint64_t elems = 1;
+                for (uint64_t d : t.dims) {
+                    if (d && elems > std::numeric_limits<uint64_t>::max() / d) {
+                        err = paths[si] + ": tensor dimensions overflow for " + t.name;
+                        return false;
+                    }
+                    elems *= d;
+                }
                 if (elems % (unsigned) be != 0) t.known_type = false;
-                else t.nbytes = (uint64_t) (elems / (unsigned) be) * (uint64_t) bb;
+                else {
+                    const uint64_t blocks = elems / (unsigned) be;
+                    if (blocks > std::numeric_limits<uint64_t>::max() / (unsigned) bb) {
+                        err = paths[si] + ": tensor byte size overflow for " + t.name;
+                        return false;
+                    }
+                    t.nbytes = blocks * (unsigned) bb;
+                }
             }
             t.shard = (int) si;
             if (!seen.insert(t.name).second) { err = "duplicate tensor across shards: " + t.name; return false; }
             out.tensors.push_back(std::move(t));
         }
         // Tensor data starts at the next multiple of general.alignment after the info section.
-        const long here = std::ftell(r.f);
+#if defined(_WIN32)
+        const int64_t here = _ftelli64(r.f);
+#else
+        const int64_t here = static_cast<int64_t>(ftello(r.f));
+#endif
         if (here < 0) { err = paths[si] + ": cannot locate the tensor-data section"; return false; }
-        const uint64_t data_start = ((uint64_t) here + alignment - 1) / alignment * alignment;
+        const uint64_t pos = static_cast<uint64_t>(here);
+        if (alignment == 0 || pos > std::numeric_limits<uint64_t>::max() - (alignment - 1)) {
+            err = paths[si] + ": invalid or overflowing tensor alignment"; return false;
+        }
+        const uint64_t data_start = ((pos + alignment - 1) / alignment) * alignment;
         out.data_start.push_back(data_start);
-        for (uint64_t idx : shard_tensor_idx) out.tensors[idx].abs_offset = data_start + out.tensors[idx].offset;
+        for (uint64_t idx : shard_tensor_idx) {
+            if (out.tensors[idx].offset > std::numeric_limits<uint64_t>::max() - data_start) {
+                err = paths[si] + ": tensor offset overflow for " + out.tensors[idx].name; return false;
+            }
+            out.tensors[idx].abs_offset = data_start + out.tensors[idx].offset;
+        }
     }
     return true;
 }

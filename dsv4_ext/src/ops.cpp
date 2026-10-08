@@ -9,6 +9,8 @@
 
 namespace dsv4 {
 
+namespace { constexpr double kPi = 3.141592653589793238462643383279502884; }
+
 void rmsnorm(const float* x, const float* w, float eps, int n, float* y) {
     double ss = 0;
     for (int i = 0; i < n; ++i) ss += (double) x[i] * x[i];
@@ -22,7 +24,7 @@ void yarn_table(int dim, int seqlen, int orig_len, double base, double factor, d
     std::vector<float> freqs((size_t) h);
     for (int i = 0; i < h; ++i) freqs[(size_t) i] = (float) (1.0 / std::pow(base, (double) (2 * i) / dim));
     if (orig_len > 0) {
-        auto cdim = [&](double rot) { return dim * std::log(orig_len / (rot * 2 * M_PI)) / (2 * std::log(base)); };
+        auto cdim = [&](double rot) { return dim * std::log(orig_len / (rot * 2 * kPi)) / (2 * std::log(base)); };
         double low = std::max(std::floor(cdim(beta_fast)), 0.0);
         double high = std::min(std::ceil(cdim(beta_slow)), (double) (dim - 1));
         double mx = (low == high) ? high + 0.001 : high;
