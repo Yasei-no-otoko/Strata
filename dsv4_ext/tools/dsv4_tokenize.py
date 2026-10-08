@@ -45,16 +45,18 @@ def main() -> int:
     a = ap.parse_args()
 
     import strata_tokenizer as ST
+    from tokenizer_compat import apply_joyai_pretokenizer
     tk = ST.Tokenizer.from_gguf(a.model)
+    apply_joyai_pretokenizer(tk)
 
     text = a.text
     if a.chat:
         if not a.messages:
             raise SystemExit("--chat needs --messages (a JSON list of {role, content})")
         from serve.frontend import ChatTemplate
-        tpl_path = Path(a.model).with_suffix("")  # the template usually lives next to the tokenizer dir
         from gguf_reader import GGUFFile
-        src = GGUFFile(Path(a.model)).metadata.get("tokenizer.chat_template")
+        metadata = GGUFFile(Path(a.model)).metadata
+        src = metadata.get("tokenizer.chat_template")
         if not src:
             src = (ROOT / "serve" / "chat_template.jinja").read_text(encoding="utf-8")
             print("the GGUF carries no tokenizer.chat_template: using Strata's serve/chat_template.jinja",
@@ -63,7 +65,9 @@ def main() -> int:
             tmp = Path(tmpdir) / "chat_template.jinja"
             tmp.write_text(src, encoding="utf-8", newline="\n")
             rendered = ChatTemplate(tmp).render(json.loads(a.messages), tools=json.loads(a.tools) if a.tools else None,
-                                                add_generation_prompt=not a.no_generation_prompt)
+                                                add_generation_prompt=not a.no_generation_prompt,
+                                                bos_token=tk.tokens[metadata.get("tokenizer.ggml.bos_token_id", 0)],
+                                                eos_token=tk.tokens[metadata.get("tokenizer.ggml.eos_token_id", 1)])
         text = rendered
     if text is None:
         raise SystemExit("give the text, or --chat --messages …")

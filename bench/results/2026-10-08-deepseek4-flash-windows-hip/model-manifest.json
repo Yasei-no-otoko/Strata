@@ -1,0 +1,26 @@
+{
+  "repository": "unsloth/DeepSeek-V4-Flash-GGUF",
+  "revision": "e3aa0d6a5fa4f820d9e132ac1fd1d01e1b2b49e0",
+  "subdirectory": "UD-IQ1_M",
+  "downloadedUtc": "2026-10-08T13:31:33.6291855Z",
+  "files": [
+    {
+      "name": "DeepSeek-V4-Flash-UD-IQ1_M-00001-of-00003.gguf",
+      "size": 5256864,
+      "sha256": "279f2abec23194a3d293a78e74daccba4e2b96b04eacfc44c4a2439a7b06bfac",
+      "verified": true
+    },
+    {
+      "name": "DeepSeek-V4-Flash-UD-IQ1_M-00002-of-00003.gguf",
+      "size": 49971881120,
+      "sha256": "65e130e081cf098d607e85b08a9bf1eceb2aa92dfaa9e880949c70e5f3b4638e",
+      "verified": true
+    },
+    {
+      "name": "DeepSeek-V4-Flash-UD-IQ1_M-00003-of-00003.gguf",
+      "size": 36924175168,
+      "sha256": "cda8950af479a83ee8c14c895cc447e144b3fe0ed9d4dde80440cec807ba413f",
+      "verified": true
+    }
+  ]
+}

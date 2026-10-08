@@ -1,0 +1,32 @@
+{
+  "model": {
+    "repository": "unsloth/DeepSeek-V4-Flash-GGUF",
+    "revision": "e3aa0d6a5fa4f820d9e132ac1fd1d01e1b2b49e0",
+    "quantization": "UD-IQ1_M",
+    "first_shard": "DeepSeek-V4-Flash-UD-IQ1_M-00001-of-00003.gguf",
+    "first_shard_sha256": "279f2abec23194a3d293a78e74daccba4e2b96b04eacfc44c4a2439a7b06bfac"
+  },
+  "tokenizer": {
+    "gguf_model": "gpt2",
+    "pre_tokenizer": "joyai-llm",
+    "special_token_parsing": true
+  },
+  "chat_template": {
+    "source": "embedded GGUF tokenizer.chat_template",
+    "sha256": "d05566ebe26667ec54f4ef7a3dbc114ce2e00aefc40e0c62286374eee0e22080",
+    "add_generation_prompt": true,
+    "enable_thinking": false,
+    "bos_token_id": 0,
+    "bos_token": "<｜begin▁of▁sentence｜>",
+    "bos_included_by_template": true,
+    "template_overhead_in_token_count": true
+  },
+  "prompt_tokens": 128,
+  "requested_tokens": 128,
+  "token_ids_format": "comma-separated decimal IDs, with a trailing newline in prompt-ids.txt",
+  "sha256": {
+    "messages.json": "8e3716c8816fc1d0a1136883b33acda75b7e15b01d8d6a4dd7368b940c00f15e",
+    "rendered-prompt.txt": "6fbd6de6dd12d839691221f99d16c088527639cabeab1a09c27f78883f3ec869",
+    "prompt-ids.txt": "c773455ed7b77c46bead9e2624baa0c2ab294d0a3e2dd13f34fc18ca0c6aa8bd"
+  }
+}

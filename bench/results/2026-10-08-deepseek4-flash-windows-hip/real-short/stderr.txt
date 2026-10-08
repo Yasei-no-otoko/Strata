@@ -1,0 +1,32 @@
+[load    0.0s] read-only shard mappings and header checks done
+dsv4: HIP device 0: AMD Radeon RX 6900 XT (arch gfx1030, wave32)
+[load    5.8s] non-expert weights uploaded to GPU
+VRAM total:         16368 MiB
+VRAM free:           9720 MiB
+reserve:             4096 MiB
+fixed weights:          0 MiB
+KV estimate:            0 MiB
+activation:             0 MiB
+prefill buffers:        0 MiB
+MTP/checkpoint:         0 MiB
+scratch:                0 MiB
+expert budget:       1773 MiB (31.5% of the 5624 MiB left after fixed costs)
+expert slots:         256 of 11008 (tiered: hit/miss)
+slots/layer:     5..6
+slot bytes:          1773 MiB
+RAM expert copy:    76208 MiB
+[load    6.1s] experts copied to RAM
+expert profile: none
+experts in RAM: 0 (0.00 GiB) | VRAM slots: 256, preloaded: 0 | rest: mmap on disk
+miss LRU arena: 0 slots (0.00 GiB) | threads: 16
+device: hip | VRAM 7.86/15.98 GiB used, 7.76 GiB free (weights 7.86 GiB, scratch 0.00 GiB)
+loaded in 6.1 s (hip)
+expert stats:
+  hits: 408
+  misses: 5268
+  hit rate: 7.19%
+  admits: 256  swaps: 0
+  RAM cache: 0 hits, 0 loads (0.00 GiB), 0 evictions
+  H2D: 1.731 GiB
+  CPU miss time: 8.12 s
+  GPU hit wait: 3.42 s

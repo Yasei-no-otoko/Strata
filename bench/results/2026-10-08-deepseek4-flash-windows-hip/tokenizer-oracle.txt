@@ -1,0 +1,8 @@
+PASS: english-numbers-punctuation  11 token IDs match
+PASS: japanese-numbers             9 token IDs match
+PASS: whitespace                   9 token IDs match
+PASS: unicode-punctuation          11 token IDs match
+PASS: chat-special-tokens          10 token IDs match
+PASS: mixed-language               15 token IDs match
+PASS: chat template BOS tokenizes as ID 0
+BPE oracle: Rust tokenizers over the GGUF vocab/merges; JoyAI regex: llama.cpp 4f92965, not independently checked here.

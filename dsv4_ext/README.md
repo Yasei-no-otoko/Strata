@@ -53,6 +53,10 @@ Initial validation on Windows 11 / RX 6900 XT (gfx1030), Threadripper 3990X,
 - The synthetic four-layer model matched the NumPy reference at all 26 positions
   (argmax 26/26, maximum absolute logit difference `1.19e-6`). This is not evidence
   of real-model answer quality or throughput.
+- The real Unsloth UD-IQ1_M model ran all 43 layers at context 512: arithmetic,
+  Japanese streaming and the Responses API passed on this machine. The API
+  engine's peak working set after three requests was 35.82 GiB. See the
+  [measured results and limits](../bench/results/2026-10-08-deepseek4-flash-windows-hip/README.md).
 
 For a first real-model run, use a short context and avoid a second full expert copy:
 
@@ -72,6 +76,20 @@ For the API, pass the same memory options to `tools/serve_dsv4.py --hip`, option
 or launch Python through `run_windows_hip.bat`. The wrapper checks that a requested
 HIP backend actually reports `device=hip`. Keep the default `127.0.0.1`; non-loopback
 serving requires `--api-key`.
+
+The CLI and dedicated API wrapper honor the GGUF's `joyai-llm` pre-tokenizer
+(three ordered regex passes) and supply its BOS/EOS strings to the chat template.
+The wrapper also aligns the template and output parser's default no-thinking mode.
+The shared Qwen tokenizer is unchanged. Run the adapter regression and, optionally,
+the actual-vocabulary comparison with Rust's `tokenizers` package:
+
+```bat
+python dsv4_ext/tests/test_tokenizer_compat.py
+python dsv4_ext/tests/test_tokenizer_joyai_oracle.py --model C:\models\DeepSeek-V4-Flash-UD-IQ1_M-00001-of-00003.gguf
+```
+
+The optional comparison uses an independent BPE implementation. Its input splitting
+uses the adapter and therefore does not independently validate the regex rules.
 
 ## Inspect your real GGUF (all 3 shards, header only)
 

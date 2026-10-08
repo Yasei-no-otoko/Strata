@@ -1,0 +1,13 @@
+{
+  "engine_source_commit": "f922a20",
+  "executable": "dsv4_ext/build-hip-win/dsv4_run.exe",
+  "executable_sha256": "9688fad315fd89b3ed73c9c599a0a9d9ec67117b0304a50690d71e8f9a4f0b35",
+  "upstream_pr": "https://github.com/Niko1221/Strata/pull/1518",
+  "upstream_head": "1e28cd54dcf7866e79afb3e5b7b2024f73d0d654",
+  "backend": "HIP",
+  "gpu": "AMD Radeon RX 6900 XT",
+  "arch": "gfx1030",
+  "rocm": "10.2.0a20260930",
+  "compiler": "AMD Clang 24",
+  "build_type": "Release"
+}

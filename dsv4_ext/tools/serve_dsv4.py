@@ -72,7 +72,7 @@ def build_engine_args(a) -> list[str]:
     return args
 
 
-def patch_tokenizer_byte_fallback() -> None:
+def patch_tokenizer_byte_fallback(pre: str = "") -> None:
     """Let token_bytes() survive a vocabulary that is not purely byte-level.
 
     Byte-level BPE stores every token as characters from the 256-entry byte alphabet, which is what
@@ -84,6 +84,9 @@ def patch_tokenizer_byte_fallback() -> None:
     here rather than in tools/strata_tokenizer.py because dsv4_ext never edits the Strata checkout.
     """
     import strata_tokenizer as ST
+    if pre == "joyai-llm":
+        from tokenizer_compat import patch_tokenizer_class_for_joyai
+        patch_tokenizer_class_for_joyai(ST.Tokenizer)
     if getattr(ST.Tokenizer, "_dsv4_byte_fallback", False):
         return
     original = ST.Tokenizer.token_bytes
@@ -115,6 +118,14 @@ def ensure_tokenizer(a, workdir: Path) -> Path:
         cfg = ST.extract(a.model, str(out))
     except ValueError as e:
         raise SystemExit(f"the GGUF has no usable tokenizer: {e}")
+    if cfg["pre"] == "joyai-llm":
+        from tokenizer_compat import JOYAI_PATTERNS
+        # The common extractor documents Qwen's single regex regardless of GGUF
+        # metadata. Record the ordered passes this dedicated adapter actually uses.
+        cfg.pop("pre_pattern", None)
+        cfg["pre_patterns"] = list(JOYAI_PATTERNS)
+        cfg["pre_pattern_source"] = "llama.cpp LLAMA_VOCAB_PRE_TYPE_JOYAI_LLM (ordered passes)"
+        (tdir / "tokenizer.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf-8")
     print("tokenizer/: vocab %d, merges %d, pre %s" % (cfg["vocab_size"], cfg["n_merges"], cfg["pre"]), flush=True)
     return tdir
 
@@ -177,6 +188,8 @@ def main() -> int:
 
     workdir = Path(a.workdir).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
+    from gguf_reader import GGUFFile
+    metadata = GGUFFile(Path(a.model)).metadata
     tdir = ensure_tokenizer(a, workdir)
     log = str(workdir / "dsv4_engine.log")
 
@@ -217,8 +230,33 @@ def main() -> int:
     cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Before server.py builds its Tokenizer from tokenizer/vocab.json.
-    patch_tokenizer_byte_fallback()
+    patch_tokenizer_byte_fallback(metadata.get("tokenizer.ggml.pre", ""))
     import serve.server as S
+
+    # Transformers supplies these template variables from tokenizer_config; the
+    # shared Qwen frontend does not need them. The DeepSeek template emits BOS.
+    vocab_tokens = metadata["tokenizer.ggml.tokens"]
+    bos = vocab_tokens[metadata.get("tokenizer.ggml.bos_token_id", 0)]
+    eos = vocab_tokens[metadata.get("tokenizer.ggml.eos_token_id", 1)]
+
+    class Dsv4ChatTemplate(S.ChatTemplate):
+        def render(self, messages, tools=None, add_generation_prompt=True, **kwargs):
+            kwargs.setdefault("bos_token", bos)
+            kwargs.setdefault("eos_token", eos)
+            return super().render(messages, tools=tools, add_generation_prompt=add_generation_prompt, **kwargs)
+
+    S.ChatTemplate = Dsv4ChatTemplate
+
+    # DeepSeek's template defaults to a completed </think> prefix. Qwen's server
+    # otherwise starts its output parser in reasoning mode, hiding a plain answer
+    # in reasoning_content. Keep the rendered prefix and parser state in agreement.
+    _service_prepare = S.Service.prepare
+
+    def _prepare_dsv4(self, messages, tools, kwargs, max_new=None, force=None, req=None):
+        kwargs.setdefault("enable_thinking", bool(kwargs.get("reasoning_effort")))
+        return _service_prepare(self, messages, tools, kwargs, max_new, force, req)
+
+    S.Service.prepare = _prepare_dsv4
 
     # --- stop ids ------------------------------------------------------------------------------------------
     # serve/server.py builds Service.stop_ids from the Qwen strings "<|im_end|>" and "<|endoftext|>". DeepSeek's
@@ -255,6 +293,9 @@ def main() -> int:
 
         def __init__(self, exe_, args, cwd=None, log=None, env=None, lazy=False):
             super().__init__(exe_, args, cwd=cwd, log=log, env=env, lazy=lazy)
+            if lazy:
+                # StrataEngine recognizes --max-context; this runner uses --ctx.
+                self.max_context = a.ctx
             expected = "hip" if a.hip else "cuda" if a.cuda else None
             if expected and not lazy and self.info.get("device") != expected:
                 actual = self.info.get("device", "unknown")

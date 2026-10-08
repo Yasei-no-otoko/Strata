@@ -1,0 +1,15 @@
+{
+  "time": "2026-10-08T22:53:45.7205894+09:00",
+  "health": {
+    "status": "ok",
+    "max_context": 131072,
+    "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+    "images": true,
+    "api_key": false,
+    "loaded": true,
+    "service": "strata"
+  },
+  "text_reply": "OK",
+  "config_sha256": "3213F66BD950DA1376CEB56AF91C37BE95F402B1F228D124C0DA9C6ED22292C8",
+  "config_unchanged": true
+}

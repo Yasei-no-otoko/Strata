@@ -1,0 +1,301 @@
+{
+  "base_url": "http://127.0.0.1:8095",
+  "timeout_seconds": 300,
+  "results": [
+    {
+      "url": "http://127.0.0.1:8095/v1/chat/completions",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      "request": {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "What is 2 + 2? Reply with just the number."
+          }
+        ],
+        "max_tokens": 32,
+        "temperature": 0
+      },
+      "started_at_utc": "2026-10-08T13:35:23.145530+00:00",
+      "streaming": false,
+      "http_status": 200,
+      "response_headers": {
+        "Server": "BaseHTTP/0.6 Python/3.12.10",
+        "Date": "Thu, 08 Oct 2026 13:35:46 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "577",
+        "Connection": "close"
+      },
+      "raw_response": "{\"id\": \"chatcmpl-dea47e2271884e4eb2e74f4b\", \"object\": \"chat.completion\", \"created\": 1791466529, \"model\": \"deepseek-v4-flash\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"4\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 18, \"completion_tokens\": 2, \"total_tokens\": 20, \"prompt_tokens_details\": {\"cached_tokens\": 0}}, \"timings\": {\"cache_n\": 0, \"prompt_n\": 18, \"prompt_ms\": 16072.0, \"prompt_per_token_ms\": 892.889, \"prompt_per_second\": 1.1, \"predicted_n\": 2, \"predicted_ms\": 731.7, \"predicted_per_token_ms\": 365.85, \"predicted_per_second\": 2.7}}",
+      "response_json": {
+        "id": "chatcmpl-dea47e2271884e4eb2e74f4b",
+        "object": "chat.completion",
+        "created": 1791466529,
+        "model": "deepseek-v4-flash",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "4"
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 18,
+          "completion_tokens": 2,
+          "total_tokens": 20,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 18,
+          "prompt_ms": 16072.0,
+          "prompt_per_token_ms": 892.889,
+          "prompt_per_second": 1.1,
+          "predicted_n": 2,
+          "predicted_ms": 731.7,
+          "predicted_per_token_ms": 365.85,
+          "predicted_per_second": 2.7
+        }
+      },
+      "content": "4",
+      "first_content_latency_seconds": 22.987819500034675,
+      "wall_time_seconds": 22.9878272000351,
+      "finished_at_utc": "2026-10-08T13:35:46.133232+00:00",
+      "name": "chat-arithmetic-default",
+      "pass": true,
+      "assertions": {
+        "nonempty_content": true,
+        "contains_arithmetic_result_4": true,
+        "http_status_200": true
+      }
+    },
+    {
+      "url": "http://127.0.0.1:8095/v1/chat/completions",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+      },
+      "request": {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "日本の首都はどこですか？地名だけを日本語で答えてください。"
+          }
+        ],
+        "max_tokens": 32,
+        "temperature": 0,
+        "stream": true
+      },
+      "started_at_utc": "2026-10-08T13:35:46.138239+00:00",
+      "streaming": true,
+      "http_status": 200,
+      "response_headers": {
+        "Server": "BaseHTTP/0.6 Python/3.12.10",
+        "Date": "Thu, 08 Oct 2026 13:35:46 GMT",
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "close"
+      },
+      "raw_response": "data: {\"id\": \"chatcmpl-07c8bdc7079544ff8a86e53b\", \"object\": \"chat.completion.chunk\", \"created\": 1791466546, \"model\": \"deepseek-v4-flash\", \"choices\": [{\"index\": 0, \"delta\": {\"role\": \"assistant\", \"content\": \"\"}, \"finish_reason\": null}]}\n\n: keep-alive\n\n: keep-alive\n\n: keep-alive\n\ndata: {\"id\": \"chatcmpl-07c8bdc7079544ff8a86e53b\", \"object\": \"chat.completion.chunk\", \"created\": 1791466546, \"model\": \"deepseek-v4-flash\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"東\"}, \"finish_reason\": null}]}\n\ndata: {\"id\": \"chatcmpl-07c8bdc7079544ff8a86e53b\", \"object\": \"chat.completion.chunk\", \"created\": 1791466546, \"model\": \"deepseek-v4-flash\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"京都\"}, \"finish_reason\": null}]}\n\ndata: {\"id\": \"chatcmpl-07c8bdc7079544ff8a86e53b\", \"object\": \"chat.completion.chunk\", \"created\": 1791466546, \"model\": \"deepseek-v4-flash\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 19, \"completion_tokens\": 3, \"total_tokens\": 22, \"prompt_tokens_details\": {\"cached_tokens\": 0}}, \"timings\": {\"cache_n\": 0, \"prompt_n\": 19, \"prompt_ms\": 12672.4, \"prompt_per_token_ms\": 666.968, \"prompt_per_second\": 1.5, \"predicted_n\": 3, \"predicted_ms\": 1468.6, \"predicted_per_token_ms\": 489.533, \"predicted_per_second\": 2.0}}\n\ndata: [DONE]\n\n",
+      "events": [
+        {
+          "id": "chatcmpl-07c8bdc7079544ff8a86e53b",
+          "object": "chat.completion.chunk",
+          "created": 1791466546,
+          "model": "deepseek-v4-flash",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "role": "assistant",
+                "content": ""
+              },
+              "finish_reason": null
+            }
+          ]
+        },
+        {
+          "id": "chatcmpl-07c8bdc7079544ff8a86e53b",
+          "object": "chat.completion.chunk",
+          "created": 1791466546,
+          "model": "deepseek-v4-flash",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "content": "東"
+              },
+              "finish_reason": null
+            }
+          ]
+        },
+        {
+          "id": "chatcmpl-07c8bdc7079544ff8a86e53b",
+          "object": "chat.completion.chunk",
+          "created": 1791466546,
+          "model": "deepseek-v4-flash",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {
+                "content": "京都"
+              },
+              "finish_reason": null
+            }
+          ]
+        },
+        {
+          "id": "chatcmpl-07c8bdc7079544ff8a86e53b",
+          "object": "chat.completion.chunk",
+          "created": 1791466546,
+          "model": "deepseek-v4-flash",
+          "choices": [
+            {
+              "index": 0,
+              "delta": {},
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 19,
+            "completion_tokens": 3,
+            "total_tokens": 22,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 19,
+            "prompt_ms": 12672.4,
+            "prompt_per_token_ms": 666.968,
+            "prompt_per_second": 1.5,
+            "predicted_n": 3,
+            "predicted_ms": 1468.6,
+            "predicted_per_token_ms": 489.533,
+            "predicted_per_second": 2.0
+          }
+        }
+      ],
+      "content": "東京都",
+      "done_marker": true,
+      "first_content_latency_seconds": 12.679223200015258,
+      "wall_time_seconds": 14.148315600003116,
+      "finished_at_utc": "2026-10-08T13:36:00.286714+00:00",
+      "name": "chat-japanese-stream",
+      "pass": true,
+      "assertions": {
+        "nonempty_content": true,
+        "contains_tokyo": true,
+        "sse_done_marker": true,
+        "http_status_200": true
+      }
+    },
+    {
+      "url": "http://127.0.0.1:8095/v1/responses",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      "request": {
+        "model": "deepseek-v4-flash",
+        "input": "In one short English sentence, what is the Moon?",
+        "max_output_tokens": 48,
+        "temperature": 0
+      },
+      "started_at_utc": "2026-10-08T13:36:00.289704+00:00",
+      "streaming": false,
+      "http_status": 200,
+      "response_headers": {
+        "Server": "BaseHTTP/0.6 Python/3.12.10",
+        "Date": "Thu, 08 Oct 2026 13:36:23 GMT",
+        "Content-Type": "application/json",
+        "Content-Length": "1053",
+        "Connection": "close"
+      },
+      "raw_response": "{\"id\": \"resp_b60405bccee840c79b515cdcc53b8c4a\", \"object\": \"response\", \"created_at\": 1791466560, \"status\": \"completed\", \"background\": false, \"error\": null, \"incomplete_details\": null, \"instructions\": null, \"max_output_tokens\": 48, \"model\": \"deepseek-v4-flash\", \"output\": [{\"id\": \"msg_8b815590df284d448951e7e750292bfe\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_text\", \"text\": \"The Moon is Earth's natural satellite, orbiting our planet and reflecting sunlight to create its phases.\", \"annotations\": [], \"logprobs\": []}]}], \"parallel_tool_calls\": true, \"previous_response_id\": null, \"reasoning\": {\"effort\": null, \"summary\": null}, \"store\": false, \"temperature\": 0, \"text\": {\"format\": {\"type\": \"text\"}}, \"tool_choice\": \"auto\", \"tools\": [], \"top_p\": null, \"truncation\": \"disabled\", \"usage\": {\"input_tokens\": 15, \"input_tokens_details\": {\"cached_tokens\": 0}, \"output_tokens\": 20, \"output_tokens_details\": {\"reasoning_tokens\": 0}, \"total_tokens\": 35}, \"user\": null, \"metadata\": {}, \"completed_at\": 1791466583}",
+      "response_json": {
+        "id": "resp_b60405bccee840c79b515cdcc53b8c4a",
+        "object": "response",
+        "created_at": 1791466560,
+        "status": "completed",
+        "background": false,
+        "error": null,
+        "incomplete_details": null,
+        "instructions": null,
+        "max_output_tokens": 48,
+        "model": "deepseek-v4-flash",
+        "output": [
+          {
+            "id": "msg_8b815590df284d448951e7e750292bfe",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "The Moon is Earth's natural satellite, orbiting our planet and reflecting sunlight to create its phases.",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "parallel_tool_calls": true,
+        "previous_response_id": null,
+        "reasoning": {
+          "effort": null,
+          "summary": null
+        },
+        "store": false,
+        "temperature": 0,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "tool_choice": "auto",
+        "tools": [],
+        "top_p": null,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 15,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 20,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 35
+        },
+        "user": null,
+        "metadata": {},
+        "completed_at": 1791466583
+      },
+      "content": "The Moon is Earth's natural satellite, orbiting our planet and reflecting sunlight to create its phases.",
+      "first_content_latency_seconds": 23.566762900038157,
+      "wall_time_seconds": 23.56676700001117,
+      "finished_at_utc": "2026-10-08T13:36:23.856397+00:00",
+      "name": "responses-moon",
+      "pass": true,
+      "assertions": {
+        "nonempty_response_text": true,
+        "http_status_200": true
+      }
+    }
+  ]
+}

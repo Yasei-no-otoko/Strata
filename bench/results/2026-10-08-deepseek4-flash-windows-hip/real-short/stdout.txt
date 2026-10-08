@@ -1,0 +1,17 @@
+dequantisation self-check (first 3 rows of the first tensor of each type; weights should be finite, ~zero mean, small):
+  F32      output_hc_fn.weight                      finite=1 mean=+0.00001 std=0.00310 absmax=0.0644
+  Q8_0     blk.0.attn_kv.weight                     finite=1 mean=-0.00026 std=0.02672 absmax=0.1172
+  Q4_K     output.weight                            finite=1 mean=+0.00167 std=0.30256 absmax=3.8128
+  Q5_K     blk.0.attn_q_a.weight                    finite=1 mean=-0.00044 std=0.02442 absmax=0.0936
+  Q6_K     blk.0.ffn_down_shexp.weight              finite=1 mean=+0.00013 std=0.01800 absmax=0.0627
+  IQ2_XXS  blk.4.ffn_gate_exps.weight               finite=1 mean=+0.00051 std=0.02513 absmax=0.1018
+  IQ3_XXS  blk.0.ffn_down_exps.weight               finite=1 mean=+0.00070 std=0.02531 absmax=0.1163
+  IQ1_M    blk.0.ffn_gate_exps.weight               finite=1 mean=-0.00005 std=0.02578 absmax=0.1104
+  BF16     blk.0.ffn_gate_inp.weight                finite=1 mean=-0.00030 std=0.03685 absmax=0.3594
+  MXFP4    blk.26.ffn_down_exps.weight              finite=1 mean=+0.00002 std=0.02500 absmax=0.0938
+prompt: 15 tokens in 14.89 s (1.01 tok/s)
+generated ids: 20 940 223 20 438 223 22 1
+text: 2 + 2 = 4<｜end▁of▁sentence｜>
+decode: 8 tokens in 5.59 s (1.43 tok/s)
+
+Generated 8 tokens in 5.59 s (1.43 tok/s)

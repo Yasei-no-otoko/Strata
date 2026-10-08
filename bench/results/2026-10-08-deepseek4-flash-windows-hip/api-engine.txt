@@ -1,0 +1,34 @@
+[strata] 2026-10-08 22:35:23 engine started: C:\Users\wildman\.codex\worktrees\deepseek4-flash-pr1518-check\Strata\dsv4_ext\build-hip-win\dsv4_run.exe --serve --model C:\Dev\Strata-data\models\deepseek-v4-flash-UD-IQ1_M\DeepSeek-V4-Flash-UD-IQ1_M-00001-of-00003.gguf --ctx 512 --threads 16 --expert-cache 256 --expert-vram-reserve-mib 4096 --expert-ram profile --ram-cache-mib 0
+[load    0.0s] read-only shard mappings and header checks done
+dsv4: HIP device 0: AMD Radeon RX 6900 XT (arch gfx1030, wave32)
+[load    5.7s] non-expert weights uploaded to GPU
+VRAM total:         16368 MiB
+VRAM free:           9720 MiB
+reserve:             4096 MiB
+fixed weights:          0 MiB
+KV estimate:            0 MiB
+activation:             0 MiB
+prefill buffers:        0 MiB
+MTP/checkpoint:         0 MiB
+scratch:                0 MiB
+expert budget:       1773 MiB (31.5% of the 5624 MiB left after fixed costs)
+expert slots:         256 of 11008 (tiered: hit/miss)
+slots/layer:     5..6
+slot bytes:          1773 MiB
+RAM expert copy:    76208 MiB
+[load    6.0s] experts copied to RAM
+expert profile: none
+experts in RAM: 0 (0.00 GiB) | VRAM slots: 256, preloaded: 0 | rest: mmap on disk
+miss LRU arena: 0 slots (0.00 GiB) | threads: 16
+device: hip | VRAM 7.86/15.98 GiB used, 7.76 GiB free (weights 7.86 GiB, scratch 0.00 GiB)
+loaded in 6.0 s (hip)
+dsv4_run: serving on stdin/stdout (READY 512)
+dsv4_run: GEN max_new=32 (asked 32) prompt=18 temp=0.00 top_p=1.00 top_k=0 min_p=0.00 rep=1.00 last_n=64 | prompt ends: Ġ+ Ġ 2 ? ĠReply Ġwith Ġjust Ġthe Ġnumber . <｜Assistant｜> </think> 
+dsv4_run: finish=stop generated=2 max_new=32 | last tokens: 4 <｜end▁of▁sentence｜> 
+dsv4_run: 18 prompt -> 2 tokens, stop (16072 ms prefill, 732 ms decode)
+dsv4_run: GEN max_new=32 (asked 32) prompt=19 temp=0.00 top_p=1.00 top_k=0 min_p=0.00 rep=1.00 last_n=64 | prompt ends: ï¼Ł åľ°åĲį ãģłãģĳ ãĤĴ æĹ¥æľ¬èªŀ ãģ§ çŃĶ ãģĪãģ¦ ãģıãģłãģķãģĦ ãĢĤ <｜Assistant｜> </think> 
+dsv4_run: finish=stop generated=3 max_new=32 | last tokens: æĿ± äº¬éĥ½ <｜end▁of▁sentence｜> 
+dsv4_run: 19 prompt -> 3 tokens, stop (12672 ms prefill, 1469 ms decode)
+dsv4_run: GEN max_new=48 (asked 48) prompt=15 temp=0.00 top_p=1.00 top_k=0 min_p=0.00 rep=1.00 last_n=64 | prompt ends: Ġone Ġshort ĠEnglish Ġsentence , Ġwhat Ġis Ġthe ĠMoon ? <｜Assistant｜> </think> 
+dsv4_run: finish=stop generated=20 max_new=48 | last tokens: Ġplanet Ġand Ġreflecting Ġsunlight Ġto Ġcreate Ġits Ġphases . <｜end▁of▁sentence｜> 
+dsv4_run: 15 prompt -> 20 tokens, stop (10032 ms prefill, 13521 ms decode)

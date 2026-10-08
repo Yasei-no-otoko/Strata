@@ -1,0 +1,2 @@
+# The manifest hashes the exact saved prompt bytes; avoid checkout EOL conversion.
+short-128-input/* -text
