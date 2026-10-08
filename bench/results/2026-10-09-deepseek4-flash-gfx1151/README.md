@@ -1,0 +1,31 @@
+# DeepSeek V4 Flash on gfx1151
+
+This evidence covers the pinned `UD-IQ1_M` three-shard GGUF on the Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`). The source base is commit `4d999ddc3fa1e191a368e2fccd7ef48d5548d8d9`. The local HIP executable was built in Release mode with HIP `gfx1151`, 32 build jobs, native CPU and AVX-512 enabled, AVX2 enabled, BMI2 disabled, and a 256-thread fallback matvec. Its SHA-256 is `B1204A7A28681438273213A45069C2DEA54102BF8B7135B86403FCDE329C8E98`.
+
+CTest passed 7/7. Native CPU forced AVX2 versus AVX-512 on the same binary produced bit-identical logits for the 15-token real-model fixture (1,939,200 logits; max and RMS absolute error 0; same generated token). The AVX-512 auto policy selects VNNI only for IQ1_M at width 4096; it retains AVX2 for other quantized formats. Sustained synthetic CPU MoE measurements are in `cpu_moe_sustained.csv`: median 1.780 ms AVX2 versus 1.725 ms AVX-512 over five interleaved pairs, with 3/5 AVX-512 wins and outliers. Treat this as a small-kernel result, not proof of an end-to-end CPU speedup.
+
+Fused attention projection was bit-identical to the unfused path at fixed matvec width in the tested full-model logits (645 bundles, zero fallback on the 15-token fixture). A 128-input/128-output workload used a tracked deterministic prompt fixture at `bench/results/2026-10-08-deepseek4-flash-windows-hip/short-128-input/prompt-ids.txt` (SHA-256 `C773455ED7B77C46BEAD9E2624BAA0C2AB294D0A3E2DD13F34FC18CA0C6AA8BD`). Settings were context 512, host threads 4, native CPU experts 6 / 16 threads, RAM cache 0 MiB, VRAM reserve 4096 MiB, passive OpenMP, and 128 output tokens. Timing runs were noisy; the recorded medians are exploratory rather than statistically conclusive.
+
+| Case | CPU policy | Matvec | Fused projection | Expert cache | Median prompt + decode | Notes |
+|---|---|---|---|---:|---:|---|
+| A (2 runs) | AVX2 | fixed 256 | off | 0 | 145.665 s | Reference configuration |
+| B (2 runs) | AVX2 | shape prototype 32 on two exact shapes | on | 0 | 131.155 s | **Rejected prototype:** materially changed reduction order/logits |
+| C (2 runs) | AVX-512 IQ1M width 4096, AVX2 elsewhere | shape prototype | on | 128.070 s | **Rejected prototype:** same numerical issue as B |
+| D | AVX-512 mixed | shape prototype | on | 1150 | 140.040 s | Cold cache; 7.776 GiB resident, 28.08% route hits, 0 staged expert bytes; slower and reduced free RAM to 26.98 GiB |
+| E | AVX2 | shape prototype | on | 1150 | 138.580 s | Cold cache; also slower than cache-0 shape runs |
+
+The first width-32 shape prototype improved timing but changed accumulation order: on the 15-token comparison, max absolute logit difference was 7.08345, RMS 0.42791, centered RMS 0.42186, and argmax differed at 1 of 15 positions. Both runs produced token 20, but this is too large to treat as a safe optimization. Do not use `DSV4_MATVEC_POLICY=shape` from this prototype as the default. That initial prototype has been superseded by a corrected implementation: 32 physical threads emulate the exact 256-accumulator reduction order. The corrected implementation passed a fresh 15-token all-logit comparison and the matched 128-input/128-output run below. Keep the 1150-slot expert cache disabled.
+
+The optional `--cpu-on-cache-miss` routing mode passed tiny GGUF checks: zero resident slots (0 GPU hits / 8 CPU evaluations), partial residency (4 hits / 4 CPU evaluations / 4 admissions), and full residency (8 hits / 0 CPU evaluations). Staged expert H2D bytes remained zero, each case matched its corresponding legacy route byte-for-byte, and invalid CPU/GPU option combinations failed during initialization. See `cache_first_tiny.json`. This is an opt-in feature; full-model cold-cache measurements did not justify enabling it by default.
+
+`run_deepseek_v4_flash_gfx1151.ps1` starts the persistent local OpenAI-compatible service after build selection is finalized. It uses the validated candidate and defaults to `DSV4_MATVEC_POLICY=shape`; it binds only to `127.0.0.1`. A Japanese streaming API generation/readiness check is recorded in `api_smoke.json`: the endpoint returned HTTP 200 and the correct answer, with EOS stop and usage counts.
+
+Raw focused sweeps: `matvec_width_sweep.csv` (GPU widths/shapes), `cpu_moe_sustained.csv` (sustained CPU), and `iq1m_avx512_rowdot.csv` (earlier exploratory kernel build; not the final candidate).
+
+## Corrected shape-policy validation
+
+The final candidate is `dsv4_ext/build-shape32-v256-gfx1151/dsv4_run.exe` (SHA-256 `B1204A7A28681438273213A45069C2DEA54102BF8B7135B86403FCDE329C8E98`). It schedules the tuned shapes with 32 physical threads while preserving the original 256 virtual accumulation tree. On the tracked 128-token fixture, a same-binary fixed-versus-shape pair produced identical 32,966,400 logits (SHA-256 `4187AF78ABF0CD4AA01E7BA3A0E3B101E240CD4FEC756EEF40BFB1DAD10C38CF`), identical routing trace (SHA-256 `5B7682E4C858D8033AEA07EB392D34B6745F797857A660B86254425283DAE208`), and identical 128 generated IDs. Fixed took 130.10 seconds (64.68 prefill + 65.42 decode); shape took 124.77 seconds (62.11 + 62.66). This one pair is evidence of no regression on this workload, not a statistically conclusive performance claim. Both outputs summarized the fictional observations accurately but ended at the configured 128-token limit, before an EOS token.
+
+A second parity fixture used the first 15 IDs from the same tracked prompt file, SHA-256 `C773455ED7B77C46BEAD9E2624BAA0C2AB294D0A3E2DD13F34FC18CA0C6AA8BD`: `0,128803,4690,223,3398,28,553,14,270,10463,9641,31997,1733,223,736`. Fixed and shape were bit-identical over 1,939,200 logits and both generated token 16. Exact logit SHA-256 values are in `measurements.json`; generated raw output directories remain on disk locally and are excluded from version control by the report folder`s `.gitignore`.
+
+The launcher defaults to this validated executable and `DSV4_MATVEC_POLICY=shape`, while the engine's own default stays `fixed`. It binds to `127.0.0.1`. The Japanese streaming request returned `17と25の合計は42で、計算式は17 + 25 = 42です。` over SSE (TTFT 13.272 seconds, 33 prompt / 23 completion tokens, EOS stop). The recorded second request had the same engine PID (51756) before and after processing. The server is currently left running at `http://127.0.0.1:8095/`.

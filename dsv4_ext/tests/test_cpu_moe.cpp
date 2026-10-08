@@ -21,6 +21,13 @@ struct ExpertData {
     float weight = 0.f;
 };
 
+struct BenchmarkSet {
+    std::vector<ExpertData> data;
+    std::vector<dsv4::CpuExpert> experts;
+    std::vector<float> reference;
+    size_t weight_bytes = 0;
+};
+
 uint64_t rng = 0xA63B9F1248D57C01ULL;
 uint64_t next_u64() {
     rng ^= rng >> 12;
@@ -228,9 +235,9 @@ bool run_case(uint32_t tg, uint32_t tu, uint32_t td, int dim, int ff, int count)
     return true;
 }
 
-bool run_benchmark(int threads, bool pin) {
-    // This shape models a full DeepSeek V4 expert FFN while keeping the benchmark's generated
-    // weights cache-hot (roughly 33.4 MiB for this six-expert IQ1_M/IQ1_M/IQ2_XXS fixture).
+bool run_benchmark(int threads, bool pin, int warmup_iterations, int timed_iterations, int set_count) {
+    // This shape models a full DeepSeek V4 expert FFN. With --sets 8, rotating through independent
+    // fixtures expands the weight working set from 33.4 MiB to about 267 MiB.
     constexpr uint32_t tg = dsv4::T_IQ1_M, tu = dsv4::T_IQ1_M, td = dsv4::T_IQ2_XXS;
     constexpr int dim = 4096, ff = 2048, count = 6;
     constexpr float limit = 5.5f;
@@ -240,56 +247,67 @@ bool run_benchmark(int threads, bool pin) {
         return false;
     }
 
-    std::vector<ExpertData> data;
-    std::vector<dsv4::CpuExpert> experts;
-    if (!make_experts(tg, tu, td, dim, ff, count, data, experts)) {
-        std::fprintf(stderr, "FAIL creating full-geometry benchmark fixture\n");
-        return false;
-    }
+    std::vector<BenchmarkSet> sets((size_t)set_count);
     size_t weight_bytes = 0;
-    for (const auto& e : data) weight_bytes += e.gate.size() + e.up.size() + e.down.size();
+    for (BenchmarkSet& set : sets) {
+        if (!make_experts(tg, tu, td, dim, ff, count, set.data, set.experts)) {
+            std::fprintf(stderr, "FAIL creating full-geometry benchmark fixture\n");
+            return false;
+        }
+        for (const auto& e : set.data)
+            set.weight_bytes += e.gate.size() + e.up.size() + e.down.size();
+        weight_bytes += set.weight_bytes;
+    }
 
     std::vector<float> x((size_t)dim);
     for (int i = 0; i < dim; ++i) x[(size_t)i] = (float)((i * 19 + 7) % 127 - 63) / 128.f;
-    std::vector<float> reference((size_t)dim), float_want((size_t)dim), output((size_t)dim);
+    std::vector<float> float_want((size_t)dim), output((size_t)dim);
     std::string err;
-    const auto ref_start = std::chrono::steady_clock::now();
-    if (!native_reference(tg, tu, td, dim, ff, limit, x, experts, reference, err)) {
-        std::fprintf(stderr, "FAIL native sequential benchmark reference: %s\n", err.c_str());
-        return false;
+    double ref_ms = 0.0;
+    for (size_t i = 0; i < sets.size(); ++i) {
+        const auto ref_start = std::chrono::steady_clock::now();
+        if (!native_reference(tg, tu, td, dim, ff, limit, x, sets[i].experts, sets[i].reference, err)) {
+            std::fprintf(stderr, "FAIL native sequential benchmark reference for set %zu: %s\n", i, err.c_str());
+            return false;
+        }
+        ref_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - ref_start).count();
     }
-    const double ref_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - ref_start).count();
     const auto float_start = std::chrono::steady_clock::now();
-    if (!float_reference(tg, tu, td, dim, ff, limit, x, experts, float_want)) {
+    if (!float_reference(tg, tu, td, dim, ff, limit, x, sets.front().experts, float_want)) {
         std::fprintf(stderr, "FAIL sequential float benchmark reference\n");
         return false;
     }
     const double float_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - float_start).count();
 
     dsv4::CpuMoe pool(threads, pin, true);
-    auto execute = [&]() { return pool.run(tg, tu, td, dim, ff, limit, x.data(), experts.data(), count, output.data(), err); };
-    if (!execute()) {
-        std::fprintf(stderr, "FAIL native CpuMoe benchmark warmup: %s\n", err.c_str());
-        return false;
+    auto execute = [&](BenchmarkSet& set) {
+        return pool.run(tg, tu, td, dim, ff, limit, x.data(), set.experts.data(), count, output.data(), err);
+    };
+    for (int iteration = 0; iteration < warmup_iterations; ++iteration) {
+        BenchmarkSet& set = sets[(size_t)iteration % sets.size()];
+        if (!execute(set)) {
+            std::fprintf(stderr, "FAIL native CpuMoe benchmark warmup %d: %s\n", iteration + 1, err.c_str());
+            return false;
+        }
+        if (!same_floats(output, set.reference)) {
+            std::fprintf(stderr, "FAIL native benchmark warmup %d differs from sequential reference\n", iteration + 1);
+            return false;
+        }
     }
-    if (!same_floats(output, reference)) {
-        std::fprintf(stderr, "FAIL native benchmark warmup differs from sequential reference\n");
-        return false;
-    }
-
-    double total_ms = 0.0;
-    for (int iteration = 0; iteration < 3; ++iteration) {
-        const auto start = std::chrono::steady_clock::now();
-        if (!execute()) {
+    const auto timed_start = std::chrono::steady_clock::now();
+    for (int iteration = 0; iteration < timed_iterations; ++iteration) {
+        BenchmarkSet& set = sets[(size_t)iteration % sets.size()];
+        if (!execute(set)) {
             std::fprintf(stderr, "FAIL native CpuMoe benchmark iteration %d: %s\n", iteration + 1, err.c_str());
             return false;
         }
-        total_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-        if (!same_floats(output, reference)) {
+        if (!same_floats(output, set.reference)) {
             std::fprintf(stderr, "FAIL native benchmark iteration %d differs from sequential reference\n", iteration + 1);
             return false;
         }
     }
+    const double total_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - timed_start).count();
     double checksum = 0.0;
     for (size_t i = 0; i < output.size(); ++i) {
         if (!std::isfinite(output[i])) {
@@ -311,10 +329,12 @@ bool run_benchmark(int threads, bool pin) {
     for (size_t i = 0; i < worker_cpus.size(); ++i)
         std::printf("%s%d", i ? "," : "", worker_cpus[i]);
     std::printf("\n");
-    std::printf("  synthetic weights=%.2f MiB (cache-hot fixture)\n", (double)weight_bytes / (1024.0 * 1024.0));
-    std::printf("  sequential native-quantized reference=%.2f ms; sequential original float row_dot=%.2f ms\n",
+    std::printf("  synthetic weights=%.2f MiB (%d rotating set%s)\n",
+                (double)weight_bytes / (1024.0 * 1024.0), set_count, set_count == 1 ? "" : "s");
+    std::printf("  sequential native-quantized references=%.2f ms total; sequential original float row_dot=%.2f ms\n",
                 ref_ms, float_ms);
-    std::printf("  native CpuMoe warmup=1 timed=3 average=%.2f ms checksum=%.9g\n", total_ms / 3.0, checksum);
+    std::printf("  native CpuMoe warmup=%d timed=%d total=%.2f ms average=%.3f ms checksum=%.9g\n",
+                warmup_iterations, timed_iterations, total_ms, total_ms / timed_iterations, checksum);
     return true;
 }
 
@@ -323,28 +343,41 @@ bool run_benchmark(int threads, bool pin) {
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "--bench") {
         int threads = 8;
+        int warmup_iterations = 1;
+        int timed_iterations = 3;
+        int set_count = 1;
         bool pin = false;
         bool have_threads = false;
         for (int i = 2; i < argc; ++i) {
-            if (std::string(argv[i]) == "--pin") {
+            const std::string arg = argv[i];
+            if (arg == "--pin") {
                 pin = true;
                 continue;
             }
-            if (have_threads) {
-                std::fprintf(stderr, "usage: test_cpu_moe [--bench [threads] [--pin]]\n");
-                return 2;
-            }
             try {
+                if (arg == "--warmup" || arg == "--iterations" || arg == "--sets") {
+                    if (++i >= argc) throw std::invalid_argument("missing value");
+                    size_t parsed = 0;
+                    const int value = std::stoi(argv[i], &parsed);
+                    if (parsed != std::strlen(argv[i])) throw std::invalid_argument("trailing characters");
+                    if (arg == "--warmup" && value >= 0 && value <= 100000) warmup_iterations = value;
+                    else if (arg == "--iterations" && value >= 1 && value <= 1000000) timed_iterations = value;
+                    else if (arg == "--sets" && value >= 1 && value <= 8) set_count = value;
+                    else throw std::invalid_argument("out of range");
+                    continue;
+                }
+                if (arg.rfind("--", 0) == 0 || have_threads) throw std::invalid_argument("unexpected argument");
                 size_t parsed = 0;
-                threads = std::stoi(argv[i], &parsed);
-                if (parsed != std::strlen(argv[i]) || threads < 1 || threads > 256) throw std::invalid_argument("range");
+                threads = std::stoi(arg, &parsed);
+                if (parsed != arg.size() || threads < 1 || threads > 256) throw std::invalid_argument("range");
                 have_threads = true;
             } catch (...) {
-                std::fprintf(stderr, "usage: test_cpu_moe [--bench [threads] [--pin]]\n");
+                std::fprintf(stderr,
+                    "usage: test_cpu_moe --bench [threads] [--pin] [--warmup N] [--iterations N] [--sets 1..8]\n");
                 return 2;
             }
         }
-        return run_benchmark(threads, pin) ? 0 : 1;
+        return run_benchmark(threads, pin, warmup_iterations, timed_iterations, set_count) ? 0 : 1;
     }
     struct Types { uint32_t g, u, d; };
     const Types mixes[] = {

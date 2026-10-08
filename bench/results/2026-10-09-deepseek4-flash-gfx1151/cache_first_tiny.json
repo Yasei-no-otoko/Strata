@@ -1,0 +1,81 @@
+{
+  "source_commit": "4d999ddc3fa1e191a368e2fccd7ef48d5548d8d9",
+  "final_candidate": {
+    "path": "dsv4_ext/build-shape32-v256-gfx1151/dsv4_run.exe",
+    "sha256": "B1204A7A28681438273213A45069C2DEA54102BF8B7135B86403FCDE329C8E98",
+    "build": "Release HIP gfx1151, AVX2/AVX512/native CPU ON, BMI2 OFF, 32 jobs, matvec fallback 256"
+  },
+  "tiny_fixture": {
+    "path": "dsv4_ext/build-baseline-gfx1151/tiny/tiny.gguf",
+    "sha256": "CE7607A3BB66282772F032F57EC72F9E71C2C0876938C1546122964009CC06BB",
+    "bytes": 1173536,
+    "prompt_ids": "33",
+    "moe_layers": 4,
+    "selected_experts_per_layer": 2,
+    "logits_bytes": 160,
+    "logit_float32_values": 40
+  },
+  "env": { "DSV4_MATVEC_POLICY": "fixed", "DSV4_CPU_IQ1M_KERNEL": "avx2" },
+  "cache_first_option_contract": "--cpu-on-cache-miss requires the GPU path, native CPU MoE, and --cpu-experts equal to model routed count K (2); resident routes stay on GPU and misses use native CPU, with no staged expert H2D.",
+  "profile": {
+    "path": "cache-first-tiny-final/gpu-profile.bin",
+    "sha256": "17ABB2EB95AE2CDA80F637262113B3E1AB43A58C2CD739A6DF03A56F7ABB41D5",
+    "bytes": 284
+  },
+  "common_flags": "--ctx 128 --prompt-ids 33 --n-predict 0 --threads 4 --cpu-threads 16 --cpu-moe-kernel native --expert-vram-reserve-mib 4096 --expert-ram profile --ram-cache-mib 0",
+  "comparisons": [
+    {
+      "name": "zero slots",
+      "candidate": "zero-first",
+      "reference": "zero-legacy",
+      "candidate_flags": "--cpu-experts 2 --cpu-on-cache-miss --expert-cache 0",
+      "reference_flags": "--cpu-experts 2 --expert-cache 0",
+      "hits": 0,
+      "misses": 8,
+      "admissions": 0,
+      "cpu_evaluations": 8,
+      "staged_expert_h2d_gib": 0,
+      "candidate_logits_sha256": "92AB9E54C83D806A1F65D938E0EC08B65C350577F8EFDFA981D12982EC28B68E",
+      "reference_logits_sha256": "92AB9E54C83D806A1F65D938E0EC08B65C350577F8EFDFA981D12982EC28B68E",
+      "exact": true
+    },
+    {
+      "name": "partial residency",
+      "candidate": "partial-first",
+      "reference": "partial-legacy",
+      "candidate_flags": "--cpu-experts 2 --cpu-on-cache-miss --expert-cache 4",
+      "reference_flags": "--cpu-experts 1 --expert-cache 4",
+      "hits": 4,
+      "misses": 4,
+      "admissions": 4,
+      "cpu_evaluations": 4,
+      "staged_expert_h2d_gib": 0,
+      "candidate_logits_sha256": "054AC7864872E4E1DECA3C37D772C4B209F7C40547D0373C13AB860BDC57EFC6",
+      "reference_logits_sha256": "054AC7864872E4E1DECA3C37D772C4B209F7C40547D0373C13AB860BDC57EFC6",
+      "exact": true,
+      "note": "one resident expert per layer matches the legacy cpu-experts1 route"
+    },
+    {
+      "name": "full residency",
+      "candidate": "full-first",
+      "reference": "full-gpu-calibration",
+      "candidate_flags": "--cpu-experts 2 --cpu-on-cache-miss --expert-cache 8 --expert-profile gpu-profile.bin",
+      "reference_flags": "--cpu-experts 0 --expert-cache 0",
+      "hits": 8,
+      "misses": 0,
+      "admissions": 0,
+      "cpu_evaluations": 0,
+      "staged_expert_h2d_gib": 0,
+      "candidate_logits_sha256": "243E115FB03FFDFB425E1AAE9CE2124025EB7C26FCEAB8F2B4B379100B44E87C",
+      "reference_logits_sha256": "243E115FB03FFDFB425E1AAE9CE2124025EB7C26FCEAB8F2B4B379100B44E87C",
+      "exact": true
+    }
+  ],
+  "invalid_options": [
+    { "case": "cpu-experts differs from K", "flags": "--cpu-experts 1 --cpu-on-cache-miss", "exit": 1, "diagnostic": "--cpu-on-cache-miss requires --cpu-experts to equal the model's routed expert count (2)" },
+    { "case": "GPU disabled", "flags": "--cpu --cpu-experts 2 --cpu-on-cache-miss", "exit": 1, "diagnostic": "--cpu-on-cache-miss requires the GPU backend" },
+    { "case": "reference CPU kernel", "flags": "--cpu-experts 2 --cpu-moe-kernel reference --cpu-on-cache-miss", "exit": 1, "diagnostic": "--cpu-on-cache-miss requires the native CPU MoE backend (build with DSV4_NATIVE_CPU=ON and do not select --cpu-moe-kernel reference)" },
+    { "case": "invalid GPU policy", "env": "DSV4_MATVEC_POLICY=bad", "exit": 1, "diagnostic": "DSV4_MATVEC_POLICY must be fixed or shape" }
+  ],
+  "artifacts": "Raw outputs/logs/profile are in cache-first-tiny-final/. Each successful run used the common flags above."
+}

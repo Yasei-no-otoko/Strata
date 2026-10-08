@@ -78,6 +78,18 @@ bool matvec(uint32_t type, const uint8_t* W, int64_t rows, int64_t in, const flo
 bool matvec_grouped(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
                     const float* d_x, float* d_y);
 
+/// Fused attention projections on a shared input. Workspace holds packed output
+/// [q_rows | kv_rows | q_lora] followed by q_lora temporary floats. q_a and kv
+/// both read d_x; q_a is weighted-RMS-normalized before q_b. The caller copies
+/// the packed prefix back once after this asynchronous operation succeeds.
+/// False means invalid geometry or an unsupported backend/type; no fallback
+/// work is performed, so callers may run their existing reference path.
+bool attention_qkv_bundle(uint32_t q_a_type, const uint8_t* q_a_W, int64_t q_lora, int64_t dim,
+                          uint32_t kv_type, const uint8_t* kv_W, int64_t kv_rows,
+                          uint32_t q_b_type, const uint8_t* q_b_W, int64_t q_rows,
+                          const float* q_a_norm, float eps, const float* d_x,
+                          float* d_workspace, size_t workspace_floats);
+
 /// One MoE layer's HIT experts, all resident in VRAM:
 ///   d_g[k] = Wg[k] * d_x ; d_u[k] = Wu[k] * d_x ; d_a[k] = w_k * swiglu_clamped(d_g[k], d_u[k], limit)
 ///   d_y    = sum_k Wd[k] * d_a[k]

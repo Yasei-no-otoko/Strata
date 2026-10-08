@@ -1,0 +1,282 @@
+{
+  "source_commit": "4d999ddc3fa1e191a368e2fccd7ef48d5548d8d9",
+  "executable": {
+    "path": "dsv4_ext/build-shape32-v256-gfx1151/dsv4_run.exe",
+    "sha256": "B1204A7A28681438273213A45069C2DEA54102BF8B7135B86403FCDE329C8E98",
+    "config": "Release HIP gfx1151; 32 jobs; native CPU/AVX2/AVX512 ON; BMI2 OFF; matvec fallback 256; corrected 32 physical / 256 virtual sum tree"
+  },
+  "hardware": {
+    "cpu": "Ryzen AI MAX+ 395",
+    "gpu": "Radeon 8060S",
+    "hip_arch": "gfx1151",
+    "ram_gib": 125.5
+  },
+  "model": {
+    "repository": "unsloth/DeepSeek-V4-Flash-GGUF",
+    "revision": "e3aa0d6a5fa4f820d9e132ac1fd1d01e1b2b49e0",
+    "quant": "UD-IQ1_M",
+    "bytes": 86901313152,
+    "first_shard": "C:/models/DeepSeek-V4-Flash-UD-IQ1_M/UD-IQ1_M/DeepSeek-V4-Flash-UD-IQ1_M-00001-of-00003.gguf"
+  },
+  "validation": {
+    "ctest": "7/7 passed",
+    "real15_avx2_vs_avx512": {
+      "logits": 1939200,
+      "max_abs": 0,
+      "rms_abs": 0,
+      "argmax_mismatches": 0,
+      "output_token_id": 20
+    },
+    "fused_projection_fixed_width_off_vs_on": {
+      "logits": 1939200,
+      "max_abs": 0,
+      "calls": 645,
+      "fallbacks": 0
+    },
+    "shape32_prototype_vs_fixed256": {
+      "logits": 1939200,
+      "max_abs": 7.08345,
+      "rms_abs": 0.42791,
+      "mean_abs": 0.301853,
+      "centered_rms": 0.421856,
+      "argmax_mismatches": 1,
+      "output_token_id_both": 20,
+      "disposition": "Rejected: the original physical-32 reduction-order prototype changed logits; the corrected physical32/virtual256 implementation is a separate accepted variant with bit-identical real-model parity."
+    },
+    "cache_first_tiny": "See cache_first_tiny.json; zero/partial/full residency exact comparisons and invalid-option diagnostics passed.",
+    "corrected_shape32_virtual256_prefix15": {
+      "fixture": "first 15 IDs of tracked short-128-input/prompt-ids.txt",
+      "fixture_sha256": "C773455ED7B77C46BEAD9E2624BAA0C2AB294D0A3E2DD13F34FC18CA0C6AA8BD",
+      "prefix_ids": "0,128803,4690,223,3398,28,553,14,270,10463,9641,31997,1733,223,736",
+      "logits": 1939200,
+      "fixed_sha256": "C095B50576CBF6DA1F8D97B5A5AA25A36D6565AAA85265EFB4801BFD227D275D",
+      "shape_sha256": "C095B50576CBF6DA1F8D97B5A5AA25A36D6565AAA85265EFB4801BFD227D275D",
+      "max_abs": 0,
+      "rms_abs": 0,
+      "mean_abs": 0,
+      "centered_rms": 0,
+      "argmax_mismatches": 0,
+      "fixed_generated_id": 16,
+      "shape_generated_id": 16,
+      "fused_bundles_each": 645,
+      "fused_fallbacks_each": 0
+    }
+  },
+  "real_128in_128out": {
+    "fixture": "bench/results/2026-10-08-deepseek4-flash-windows-hip/short-128-input/prompt-ids.txt",
+    "fixture_sha256": "C773455ED7B77C46BEAD9E2624BAA0C2AB294D0A3E2DD13F34FC18CA0C6AA8BD",
+    "common": "ctx512; host4; native CPU experts6/threads16; RAM cache0; reserve4096MiB; OMP passive; 128 generated tokens; measurements are exploratory and noisy",
+    "cases": [
+      {
+        "label": "A",
+        "cpu": "AVX2",
+        "gpu_matvec": "fixed256",
+        "fused_projection": false,
+        "expert_cache": 0,
+        "runs": 2,
+        "median_prefill_s": 69.855,
+        "median_decode_s": 75.81,
+        "median_total_s": 145.665,
+        "free_ram_min_gib": [
+          33.56,
+          34.5
+        ],
+        "peak_working_set_gib": [
+          53.08,
+          53.01
+        ]
+      },
+      {
+        "label": "B",
+        "cpu": "AVX2",
+        "gpu_matvec": "shape32 prototype",
+        "fused_projection": true,
+        "expert_cache": 0,
+        "runs": 2,
+        "median_prefill_s": 62.475,
+        "median_decode_s": 68.68,
+        "median_total_s": 131.155,
+        "free_ram_min_gib": [
+          34.08,
+          34.15
+        ],
+        "peak_working_set_gib": [
+          53.39,
+          53.4
+        ],
+        "fused_bundles": 10965,
+        "fused_fallbacks": 0,
+        "disposition": "Reject shape32 prototype for numeric drift"
+      },
+      {
+        "label": "C",
+        "cpu": "auto mixed IQ1M4096 AVX512, AVX2 elsewhere",
+        "gpu_matvec": "shape32 prototype",
+        "fused_projection": true,
+        "expert_cache": 0,
+        "runs": 2,
+        "median_prefill_s": 61.785,
+        "median_decode_s": 66.285,
+        "median_total_s": 128.07,
+        "free_ram_min_gib": [
+          34.04,
+          34.16
+        ],
+        "peak_working_set_gib": [
+          53.44,
+          53.4
+        ],
+        "fused_bundles": 10965,
+        "fused_fallbacks": 0,
+        "disposition": "Reject shape32 prototype for numeric drift"
+      },
+      {
+        "label": "D",
+        "cpu": "AVX512 mixed",
+        "gpu_matvec": "shape32 prototype",
+        "fused_projection": true,
+        "expert_cache": 1150,
+        "cold_profile": true,
+        "prefill_s": 71.34,
+        "decode_s": 68.7,
+        "total_s": 140.04,
+        "free_ram_min_gib": 26.98,
+        "peak_working_set_gib": 59.3,
+        "gpu_cache_gib": 7.776,
+        "route_hits": 18475,
+        "route_misses": 47315,
+        "admissions": 1150,
+        "hit_rate": 0.2808,
+        "staged_expert_h2d_bytes": 0,
+        "resident_expert_h2d_gib": 7.776,
+        "cpu_evaluations": 47315,
+        "gpu_tail_wait_s": 15.53,
+        "fused_bundles": 10965,
+        "fused_fallbacks": 0
+      },
+      {
+        "label": "E",
+        "cpu": "AVX2",
+        "gpu_matvec": "shape32 prototype",
+        "fused_projection": true,
+        "expert_cache": 1150,
+        "cold_profile": true,
+        "prefill_s": 70.77,
+        "decode_s": 67.81,
+        "total_s": 138.58,
+        "free_ram_min_gib": 26.85,
+        "peak_working_set_gib": 59.45,
+        "gpu_cache_gib": 7.776,
+        "route_hits": 18475,
+        "route_misses": 47315,
+        "admissions": 1150,
+        "hit_rate": 0.2808,
+        "staged_expert_h2d_bytes": 0,
+        "resident_expert_h2d_gib": 7.776,
+        "cpu_evaluations": 47315,
+        "gpu_tail_wait_s": 15.12,
+        "fused_bundles": 10965,
+        "fused_fallbacks": 0
+      }
+    ],
+    "corrected_candidate_pair": {
+      "fixture": "same tracked 128-token prompt ids",
+      "fixture_sha256": "C773455ED7B77C46BEAD9E2624BAA0C2AB294D0A3E2DD13F34FC18CA0C6AA8BD",
+      "settings": "same executable; ctx512; host4; CPU experts6/threads16/native auto; RAM cache0; VRAM reserve4096MiB; fused attention; OMP passive; profile timing",
+      "fixed": {
+        "prompt_s": 64.68,
+        "decode_s": 65.42,
+        "prompt_tokens": 128,
+        "generated_tokens": 128,
+        "total_s": 130.1
+      },
+      "shape": {
+        "prompt_s": 62.11,
+        "decode_s": 62.66,
+        "prompt_tokens": 128,
+        "generated_tokens": 128,
+        "total_s": 124.77
+      },
+      "logits_count": 32966400,
+      "logits_bytes": 131865600,
+      "fixed_logits_sha256": "4187AF78ABF0CD4AA01E7BA3A0E3B101E240CD4FEC756EEF40BFB1DAD10C38CF",
+      "shape_logits_sha256": "4187AF78ABF0CD4AA01E7BA3A0E3B101E240CD4FEC756EEF40BFB1DAD10C38CF",
+      "routing_trace_sha256": "5B7682E4C858D8033AEA07EB392D34B6745F797857A660B86254425283DAE208",
+      "same_generated_ids": true,
+      "fused_bundles_each": 10965,
+      "fused_fallbacks_each": 0,
+      "speed_difference_percent": 4.1,
+      "interpretation": "One matched timing pair; exact outputs and route trace, no regression on this fixture; not statistically conclusive. Both responses reached the configured 128-token limit before EOS."
+    }
+  },
+  "cpu_sustained_microbench": {
+    "csv": "cpu_moe_sustained.csv",
+    "threads": 16,
+    "pinned": true,
+    "warmup": 50,
+    "iterations": 400,
+    "rotating_sets": 8,
+    "working_set_mib": 267,
+    "avx2_median_ms": 1.78,
+    "avx512_median_ms": 1.725,
+    "avx512_pair_wins": 3,
+    "pairs": 5,
+    "checksums": "identical"
+  },
+  "final_executable": {
+    "path": "dsv4_ext/build-shape32-v256-gfx1151/dsv4_run.exe",
+    "sha256": "B1204A7A28681438273213A45069C2DEA54102BF8B7135B86403FCDE329C8E98"
+  },
+  "api_smoke": {
+    "endpoint": "http://127.0.0.1:8095/v1/chat/completions",
+    "model": "deepseek-v4-flash",
+    "binary": {
+      "path": "dsv4_ext/build-shape32-v256-gfx1151/dsv4_run.exe",
+      "sha256": "B1204A7A28681438273213A45069C2DEA54102BF8B7135B86403FCDE329C8E98"
+    },
+    "runtime": {
+      "backend": "HIP",
+      "device": "AMD Radeon(TM) 8060S Graphics",
+      "arch": "gfx1151",
+      "matvec_policy": "shape",
+      "cpu_kernel_policy": "auto: AVX512 IQ1_M at width4096, AVX2 otherwise",
+      "cpu_experts": 6,
+      "cpu_threads": 16,
+      "host_threads": 4,
+      "expert_cache_slots": 0,
+      "ram_cache_mib": 0,
+      "vram_reserve_mib": 4096,
+      "fused_attention_projection_calls": 645,
+      "fused_attention_projection_fallbacks": 0
+    },
+    "request": {
+      "method": "POST",
+      "stream": true,
+      "reasoning_effort": "none",
+      "max_tokens": 64,
+      "temperature": 0,
+      "prompt": "日本語で簡潔に答えてください。17と25の合計は何ですか。答えと計算式を一文で示してください。",
+      "http_status": 200,
+      "response": "17と25の合計は42で、計算式は17 + 25 = 42です。",
+      "ttft_s": 13.272,
+      "total_s": 20.657,
+      "usage": {
+        "prompt_tokens": 33,
+        "completion_tokens": 23,
+        "total_tokens": 56
+      },
+      "finish_reason": "stop"
+    },
+    "persistence": {
+      "engine_pid_before": 51756,
+      "engine_pid_after": 51756,
+      "same_engine_process": true,
+      "model_ready": true,
+      "request_label": "Second Japanese request; same persistent engine process before and after this request."
+    },
+    "service_workdir": "C:/models/DeepSeek-V4-Flash-UD-IQ1_M/runs/serve-gfx1151",
+    "api_python": "C:/Users/HarutoWatanabe/.unsloth/studio/unsloth_studio/Scripts/python.exe",
+    "note": "The ROCm SDK venv is used for the HIP DLL path. It lacks regex/FastAPI; the existing Unsloth Studio Python environment supplies the API/tokenizer modules without modifying any Python environment."
+  },
+  "selected_runtime_policy": "Final: corrected shape policy, fused attention projection, cache0, and CPU auto (AVX512 VNNI for IQ1_M width4096; AVX2 otherwise). Executable B1204A7A...C8E98."
+}

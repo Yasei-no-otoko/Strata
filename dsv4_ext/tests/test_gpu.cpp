@@ -207,16 +207,26 @@ bool check_grouped_matvec(uint32_t type, int64_t groups) {
     return true;
 }
 
-bool run_matvec_bench(int iterations, int64_t rows) {
+bool run_matvec_bench(int iterations, int64_t rows, int64_t in, const char* selected_type) {
     // Opt-in throughput probe for comparing kernel revisions. Weight/input uploads are excluded;
     // each timed call includes launch and a D2H sync, so report it as end-to-end matvec latency.
-    constexpr int64_t in = 4096;
     const uint32_t types[] = {dsv4::T_F32, dsv4::T_BF16, dsv4::T_Q8_0, dsv4::T_Q4_K, dsv4::T_Q5_K,
         dsv4::T_Q6_K, dsv4::T_IQ3_XXS, dsv4::T_IQ2_XXS, dsv4::T_IQ1_M, dsv4::T_MXFP4};
+    const char* const names[] = {"f32", "bf16", "q8_0", "q4_k", "q5_k", "q6_k", "iq3_xxs", "iq2_xxs", "iq1_m", "mxfp4"};
     std::vector<float> x((size_t)in), y((size_t)rows);
     for (int64_t i = 0; i < in; ++i) x[(size_t)i] = (float)((i * 13 % 101) - 50) / 80.f;
-    for (uint32_t type : types) {
+    bool matched_type = false;
+    for (size_t type_index = 0; type_index < sizeof(types) / sizeof(types[0]); ++type_index) {
+        const uint32_t type = types[type_index];
+        if (std::strcmp(selected_type, "all") != 0 && std::strcmp(selected_type, names[type_index]) != 0) continue;
+        matched_type = true;
         std::vector<uint8_t> w;
+        const size_t rb = dsv4::row_bytes(type, in);
+        if (!rb || (uint64_t)rows > SIZE_MAX / rb || (uint64_t)rows * rb > (1ULL << 30)) {
+            std::fprintf(stderr, "FAIL benchmark matrix is invalid or exceeds 1 GiB for type %s (%lld x %lld)\n",
+                         names[type_index], (long long)rows, (long long)in);
+            return false;
+        }
         if (!make_matrix(type, rows, in, w)) return false;
         void* dw = dsv4::gpu::alloc(w.size());
         auto* dx = (float*)dsv4::gpu::alloc(x.size() * sizeof(float));
@@ -247,6 +257,10 @@ bool run_matvec_bench(int iterations, int64_t rows) {
         std::printf("bench type=%u shape=%lldx%lld bytes=%zu iterations=%d ms/call=%.4f effective_GB/s=%.2f\n",
                     type, (long long)rows, (long long)in, w.size(), iterations, ms, gbps);
         dsv4::gpu::release(dw); dsv4::gpu::release(dx); dsv4::gpu::release(dy);
+    }
+    if (!matched_type) {
+        std::fprintf(stderr, "FAIL unknown benchmark type '%s'\n", selected_type);
+        return false;
     }
     return true;
 }
@@ -532,15 +546,90 @@ bool check_unsupported_rejects_without_write() {
     return true;
 }
 
+bool check_attention_qkv_bundle() {
+    constexpr int64_t dim = 512, q_lora = 256, q_rows = 512, kv_rows = 128;
+    constexpr uint32_t q_a_type = dsv4::T_IQ1_M, kv_type = dsv4::T_Q8_0, q_b_type = dsv4::T_IQ3_XXS;
+    constexpr float eps = 1e-5f;
+    std::vector<uint8_t> q_a, kv_w, q_b;
+    if (!make_matrix(q_a_type, q_lora, dim, q_a) || !make_matrix(kv_type, kv_rows, dim, kv_w) ||
+        !make_matrix(q_b_type, q_rows, q_lora, q_b)) {
+        std::fprintf(stderr, "FAIL attention QKV fixture construction\n"); return false;
+    }
+    std::vector<float> x((size_t)dim), norm((size_t)q_lora), qa((size_t)q_lora), qr((size_t)q_lora);
+    std::vector<float> q_ref((size_t)q_rows), kv_ref((size_t)kv_rows);
+    for (int64_t i = 0; i < dim; ++i) x[(size_t)i] = (float)((i * 17 % 97) - 48) / 64.f;
+    for (int64_t i = 0; i < q_lora; ++i) norm[(size_t)i] = 0.75f + (float)(i % 11) / 32.f;
+    const size_t q_a_rb = dsv4::row_bytes(q_a_type, dim);
+    const size_t kv_rb = dsv4::row_bytes(kv_type, dim);
+    const size_t q_b_rb = dsv4::row_bytes(q_b_type, q_lora);
+    for (int64_t r = 0; r < q_lora; ++r)
+        qa[(size_t)r] = dsv4::row_dot(q_a_type, q_a.data() + (size_t)r * q_a_rb, x.data(), dim);
+    dsv4::rmsnorm(qa.data(), norm.data(), eps, (int)q_lora, qr.data());
+    for (int64_t r = 0; r < q_rows; ++r)
+        q_ref[(size_t)r] = dsv4::row_dot(q_b_type, q_b.data() + (size_t)r * q_b_rb, qr.data(), q_lora);
+    for (int64_t r = 0; r < kv_rows; ++r)
+        kv_ref[(size_t)r] = dsv4::row_dot(kv_type, kv_w.data() + (size_t)r * kv_rb, x.data(), dim);
+
+    const size_t packed_n = (size_t)(q_rows + kv_rows + q_lora);
+    const size_t workspace_n = packed_n + (size_t)q_lora;
+    auto* d_q_a = (uint8_t*)dsv4::gpu::alloc(q_a.size());
+    auto* d_kv_w = (uint8_t*)dsv4::gpu::alloc(kv_w.size());
+    auto* d_q_b = (uint8_t*)dsv4::gpu::alloc(q_b.size());
+    auto* d_norm = (float*)dsv4::gpu::alloc(norm.size() * sizeof(float));
+    auto* d_x = (float*)dsv4::gpu::alloc(x.size() * sizeof(float));
+    auto* d_workspace = (float*)dsv4::gpu::alloc(workspace_n * sizeof(float));
+    if (!d_q_a || !d_kv_w || !d_q_b || !d_norm || !d_x || !d_workspace) {
+        std::fprintf(stderr, "FAIL attention QKV GPU allocation\n");
+        if (d_q_a) dsv4::gpu::release(d_q_a); if (d_kv_w) dsv4::gpu::release(d_kv_w);
+        if (d_q_b) dsv4::gpu::release(d_q_b); if (d_norm) dsv4::gpu::release(d_norm);
+        if (d_x) dsv4::gpu::release(d_x); if (d_workspace) dsv4::gpu::release(d_workspace);
+        return false;
+    }
+    dsv4::gpu::h2d(d_q_a, q_a.data(), q_a.size()); dsv4::gpu::h2d(d_kv_w, kv_w.data(), kv_w.size());
+    dsv4::gpu::h2d(d_q_b, q_b.data(), q_b.size()); dsv4::gpu::h2d(d_norm, norm.data(), norm.size() * sizeof(float));
+    dsv4::gpu::h2d(d_x, x.data(), x.size() * sizeof(float));
+    std::vector<float> packed(packed_n, 1234.5f);
+    dsv4::gpu::h2d(d_workspace, packed.data(), packed_n * sizeof(float));
+    const bool rejected = !dsv4::gpu::attention_qkv_bundle(
+        q_a_type, d_q_a, q_lora, dim, kv_type, d_kv_w, kv_rows, q_b_type, d_q_b, q_rows,
+        d_norm, eps, d_x, d_workspace, workspace_n - 1);
+    dsv4::gpu::d2h(packed.data(), d_workspace, packed_n * sizeof(float));
+    const bool untouched = std::all_of(packed.begin(), packed.end(), [](float v) { return v == 1234.5f; });
+    const bool launched = dsv4::gpu::attention_qkv_bundle(
+        q_a_type, d_q_a, q_lora, dim, kv_type, d_kv_w, kv_rows, q_b_type, d_q_b, q_rows,
+        d_norm, eps, d_x, d_workspace, workspace_n);
+    if (launched) dsv4::gpu::d2h(packed.data(), d_workspace, packed_n * sizeof(float));
+    dsv4::gpu::release(d_q_a); dsv4::gpu::release(d_kv_w); dsv4::gpu::release(d_q_b);
+    dsv4::gpu::release(d_norm); dsv4::gpu::release(d_x); dsv4::gpu::release(d_workspace);
+    if (!rejected || !untouched || !launched) {
+        std::fprintf(stderr, "FAIL attention QKV bundle rejected invalid workspace or launched valid pipeline\n"); return false;
+    }
+    for (int64_t i = 0; i < q_rows; ++i) if (!close_enough(packed[(size_t)i], q_ref[(size_t)i])) {
+        std::fprintf(stderr, "FAIL attention QKV query row=%lld got=%g want=%g\n", (long long)i, packed[(size_t)i], q_ref[(size_t)i]); return false;
+    }
+    for (int64_t i = 0; i < kv_rows; ++i) if (!close_enough(packed[(size_t)q_rows + (size_t)i], kv_ref[(size_t)i])) {
+        std::fprintf(stderr, "FAIL attention QKV key/value row=%lld got=%g want=%g\n", (long long)i,
+                     packed[(size_t)q_rows + (size_t)i], kv_ref[(size_t)i]); return false;
+    }
+    for (int64_t i = 0; i < q_lora; ++i) if (!close_enough(packed[(size_t)(q_rows + kv_rows) + (size_t)i], qr[(size_t)i])) {
+        std::fprintf(stderr, "FAIL attention QKV normalized latent row=%lld got=%g want=%g\n", (long long)i,
+                     packed[(size_t)(q_rows + kv_rows) + (size_t)i], qr[(size_t)i]); return false;
+    }
+    std::puts("ok fused attention q_a/RMSNorm/q_b + kv bundle, packed readback, invalid workspace and scalar parity");
+    return true;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     bool bench = false;
     int bench_iterations = 10;
     int64_t bench_rows = 4096;
+    int64_t bench_in = 4096;
+    const char* bench_type = "all";
     if (argc > 1) {
-        if (std::strcmp(argv[1], "--bench") != 0 || argc > 4) {
-            std::fprintf(stderr, "usage: test_gpu [--bench [iterations [rows]]]\n"); return 2;
+        if (std::strcmp(argv[1], "--bench") != 0 || argc > 6) {
+            std::fprintf(stderr, "usage: test_gpu [--bench [iterations [rows [input_width [type]]]]]\n"); return 2;
         }
         bench = true;
         if (argc >= 3) {
@@ -551,7 +640,7 @@ int main(int argc, char** argv) {
             }
             bench_iterations = (int)parsed;
         }
-        if (argc == 4) {
+        if (argc >= 4) {
             char* end = nullptr;
             const long long parsed = std::strtoll(argv[3], &end, 10);
             if (!end || *end || parsed < 1 || parsed > 129280) {
@@ -559,6 +648,15 @@ int main(int argc, char** argv) {
             }
             bench_rows = (int64_t)parsed;
         }
+        if (argc >= 5) {
+            char* end = nullptr;
+            const long long parsed = std::strtoll(argv[4], &end, 10);
+            if (!end || *end || parsed < 32 || parsed > 131072) {
+                std::fprintf(stderr, "benchmark input width must be 32..131072\n"); return 2;
+            }
+            bench_in = (int64_t)parsed;
+        }
+        if (argc == 6) bench_type = argv[5];
     }
     std::string err;
     if (!dsv4::gpu::init(err)) {
@@ -567,7 +665,7 @@ int main(int argc, char** argv) {
     if (dsv4::gpu::is_emulated()) {
         std::fprintf(stderr, "GPU TEST REFUSED: backend is CPU-emulated\n"); return 2;
     }
-    if (bench) return run_matvec_bench(bench_iterations, bench_rows) ? 0 : 1;
+    if (bench) return run_matvec_bench(bench_iterations, bench_rows, bench_in, bench_type) ? 0 : 1;
     const uint32_t types[] = {dsv4::T_F32, dsv4::T_BF16, dsv4::T_Q8_0, dsv4::T_Q4_K, dsv4::T_Q5_K,
         dsv4::T_Q6_K, dsv4::T_IQ3_XXS, dsv4::T_IQ2_XXS, dsv4::T_IQ1_M, dsv4::T_MXFP4};
     bool ok = true;
@@ -583,6 +681,7 @@ int main(int argc, char** argv) {
     ok = check_unsupported_rejects_without_write() && ok;
     ok = check_moe() && ok;
     ok = check_reference_swiglu_activation() && ok;
+    ok = check_attention_qkv_bundle() && ok;
     std::puts(ok ? "ALL REAL GPU TESTS PASSED" : "REAL GPU TESTS FAILED");
     return ok ? 0 : 1;
 }

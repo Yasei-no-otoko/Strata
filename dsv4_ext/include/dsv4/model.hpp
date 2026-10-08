@@ -32,8 +32,10 @@ struct RunOpts {
     bool verbose = true;          // startup report: memory plan, profile, RAM/VRAM expert counts
     bool profile_timing = false;  // optional host wall-clock breakdown; nested fields are not additive
     bool grouped_attention = true; // combine output-projection transfers across attention groups
+    bool fused_attention_proj = false; // fuse q_a -> weighted RMSNorm -> q_b and kv input/readback
     bool fused_shared = true;      // keep the shared expert's intermediate activations on the GPU
     int cpu_experts = 0;          // send the last N routed experts to the CPU; remaining experts use HIP/CUDA
+    bool cpu_on_cache_miss = false; // route resident experts to GPU and nonresident selected experts to native CPU
     int cpu_threads = 0;          // persistent expert pool participants, 0 follows --threads
     bool cpu_pin = true;          // one worker per physical core, with Windows processor groups
     bool cpu_host_pin = true;     // scoped Windows CPU Set on the reserved caller core
@@ -46,6 +48,8 @@ struct Stats {
     uint64_t staged_bytes = 0; // expert weights submitted through the device staging pool
     uint64_t cpu_experts = 0;  // expert evaluations actually computed on the CPU
     uint64_t native_cpu_experts = 0; // evaluated with ggml-cpu quantized activation kernels
+    uint64_t attention_bundle_calls = 0; // fused q_a/RMSNorm/q_b + kv bundles completed
+    uint64_t attention_bundle_fallbacks = 0; // opted-in attention projections using the reference path
     uint64_t admits = 0;      // experts loaded into a free VRAM slot
     uint64_t swaps = 0;       // adaptive evict+load decisions
     uint64_t hits = 0;        // routed expert evaluations served from VRAM

@@ -1,0 +1,46 @@
+{
+  "endpoint": "http://127.0.0.1:8095/v1/chat/completions",
+  "model": "deepseek-v4-flash",
+  "binary": {
+    "path": "dsv4_ext/build-shape32-v256-gfx1151/dsv4_run.exe",
+    "sha256": "B1204A7A28681438273213A45069C2DEA54102BF8B7135B86403FCDE329C8E98"
+  },
+  "runtime": {
+    "backend": "HIP",
+    "device": "AMD Radeon(TM) 8060S Graphics",
+    "arch": "gfx1151",
+    "matvec_policy": "shape",
+    "cpu_kernel_policy": "auto: AVX512 IQ1_M at width4096, AVX2 otherwise",
+    "cpu_experts": 6,
+    "cpu_threads": 16,
+    "host_threads": 4,
+    "expert_cache_slots": 0,
+    "ram_cache_mib": 0,
+    "vram_reserve_mib": 4096,
+    "fused_attention_projection_calls": 645,
+    "fused_attention_projection_fallbacks": 0
+  },
+  "request": {
+    "method": "POST",
+    "stream": true,
+    "reasoning_effort": "none",
+    "max_tokens": 64,
+    "temperature": 0,
+    "prompt": "日本語で簡潔に答えてください。17と25の合計は何ですか。答えと計算式を一文で示してください。",
+    "http_status": 200,
+    "response": "17と25の合計は42で、計算式は17 + 25 = 42です。",
+    "ttft_s": 13.272,
+    "total_s": 20.657,
+    "usage": { "prompt_tokens": 33, "completion_tokens": 23, "total_tokens": 56 },
+    "finish_reason": "stop"
+  },
+  "persistence": {
+    "engine_pid_before": 51756,
+    "engine_pid_after": 51756,
+    "same_engine_process": true,
+    "model_ready": true
+  },
+  "service_workdir": "C:/models/DeepSeek-V4-Flash-UD-IQ1_M/runs/serve-gfx1151",
+  "api_python": "C:/Users/HarutoWatanabe/.unsloth/studio/unsloth_studio/Scripts/python.exe",
+  "note": "The ROCm SDK venv is used for the HIP DLL path. It lacks regex/FastAPI; the existing Unsloth Studio Python environment supplies the API/tokenizer modules without modifying any Python environment."
+}

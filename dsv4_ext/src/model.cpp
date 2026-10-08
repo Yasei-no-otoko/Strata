@@ -187,6 +187,7 @@ struct Model::Impl {
     std::vector<std::string> toks;
     // device scratch
     float *d_x = nullptr, *d_y = nullptr, *d_g = nullptr, *d_u = nullptr, *d_a = nullptr, *d_yh = nullptr;
+    size_t d_y_floats = 0;
     std::vector<void*> allocs;
     uint8_t* d_stage = nullptr;      // device pool MISS experts are staged through (see gpu::staging)
     bool have_profile = false;
@@ -364,6 +365,17 @@ struct Model::Impl {
         if (o.cpu_moe_kernel == "native" && !use_native_cpu) {
             err = "native CPU MoE requires a DSV4_NATIVE_CPU build and its supported CPU/OS instruction set"; return false;
         }
+        if (o.cpu_on_cache_miss) {
+            if (!o.gpu) {
+                err = "--cpu-on-cache-miss requires the GPU backend"; return false;
+            }
+            if (o.cpu_experts != c.n_expert_used) {
+                err = "--cpu-on-cache-miss requires --cpu-experts to equal the model's routed expert count (" + std::to_string(c.n_expert_used) + ")"; return false;
+            }
+            if (!use_native_cpu) {
+                err = "--cpu-on-cache-miss requires the native CPU MoE backend (build with DSV4_NATIVE_CPU=ON and do not select --cpu-moe-kernel reference)"; return false;
+            }
+        }
 #ifdef _OPENMP
         // Every matvec here is memory-bound and embarrassingly parallel over the output rows: leaving this on
         // one core costs roughly 20x on a 28-thread machine. 0 means "use the whole machine".
@@ -407,7 +419,8 @@ struct Model::Impl {
             if (!gpu::init(err)) return false;
             const uint64_t before_scratch = vram_used;
             d_x = (float*) galloc((size_t) std::max<int64_t>(16384, (int64_t)c.n_head * hd) * 4);
-            d_y = (float*) galloc((size_t) std::max<int64_t>(c.vocab, 16384) * 4 + 4096);
+            d_y_floats = (size_t) std::max<int64_t>(c.vocab, 16384) + 1024;
+            d_y = (float*) galloc(d_y_floats * sizeof(float));
             d_g = (float*) galloc((size_t) gpu::kMaxHit * c.ff_exp * 4); d_u = (float*) galloc((size_t) gpu::kMaxHit * c.ff_exp * 4);
             d_a = (float*) galloc((size_t) gpu::kMaxHit * c.ff_exp * 4); d_yh = (float*) galloc((size_t) dim * 4);
             if (!d_x || !d_y || !d_g || !d_u || !d_a || !d_yh) { err = "cannot allocate GPU scratch"; return false; }
@@ -479,6 +492,7 @@ struct Model::Impl {
             // A VRAM slot only pays off if experts_hit() can run this layer's three matrices on the device.
             y.gpu_experts = o.gpu && gpu::experts_supported(y.eg.type, y.eu.type, y.ed.type);
             for (Tn* t : {&y.q_a, &y.q_b, &y.kv, &y.o_a, &y.o_b, &y.gate_inp, &y.sh_gate, &y.sh_up, &y.sh_down, &y.ac.wkv, &y.ac.wg, &y.i_q_b, &y.ic.wkv, &y.ic.wg}) upload(*t);
+            if (o.fused_attention_proj) upload(y.q_a_norm);
         }
         upload(outw);
         ph("non-expert weights uploaded to GPU");
@@ -747,13 +761,40 @@ struct Model::Impl {
         const bool yarn = y.ratio > 0;
         const float* cosT = yarn ? cos_y.data() : cos_p.data(); const float* sinT = yarn ? sin_y.data() : sin_p.data();
         const float* cs = cosT + (size_t) pos * (rd / 2); const float* sn = sinT + (size_t) pos * (rd / 2);
-        std::vector<float> qa((size_t) c.q_lora), qr((size_t) c.q_lora), q((size_t) nh * hd);
-        mv(y.q_a, x, qa.data());
-        rmsnorm(qa.data(), y.q_a_norm.f(), c.rms_eps, c.q_lora, qr.data());
-        mv(y.q_b, qr.data(), q.data());
-        for (int hh = 0; hh < nh; ++hh) { float* qh = &q[(size_t) hh * hd]; rmsnorm(qh, nullptr, c.rms_eps, hd, qh); rotary(qh, hd, rd, cs, sn, false); }
+        const int64_t q_rows = (int64_t)nh * hd;
+        std::vector<float> qa((size_t) c.q_lora), qr((size_t) c.q_lora), q((size_t) q_rows);
         std::vector<float> kv((size_t) hd), kvn((size_t) hd);
-        mv(y.kv, x, kv.data());
+        bool fused_qkv = false;
+        if (o.fused_attention_proj && o.gpu && y.q_a.d && y.q_b.d && y.kv.d && y.q_a_norm.d &&
+            y.q_a_norm.type == T_F32 && y.q_a_norm.in == c.q_lora &&
+            y.q_a.in == dim && y.q_a.out == c.q_lora &&
+            y.q_b.in == c.q_lora && y.q_b.out == q_rows &&
+            y.kv.in == dim && y.kv.out == hd && d_y_floats > 0) {
+            std::vector<float> packed((size_t)q_rows + (size_t)hd + (size_t)c.q_lora);
+            {
+                PhaseTimer timer(o.profile_timing, st->dense_mv_s);
+                gpu::h2d(d_x, x, (size_t)dim * sizeof(float));
+                fused_qkv = gpu::attention_qkv_bundle(
+                    y.q_a.type, y.q_a.d, c.q_lora, dim,
+                    y.kv.type, y.kv.d, hd,
+                    y.q_b.type, y.q_b.d, q_rows,
+                    (const float*)y.q_a_norm.d, c.rms_eps, d_x, d_y, d_y_floats);
+                if (fused_qkv) gpu::d2h(packed.data(), d_y, packed.size() * sizeof(float));
+            }
+            if (fused_qkv) {
+                std::memcpy(q.data(), packed.data(), q.size() * sizeof(float));
+                std::memcpy(kv.data(), packed.data() + q.size(), kv.size() * sizeof(float));
+                std::memcpy(qr.data(), packed.data() + q.size() + kv.size(), qr.size() * sizeof(float));
+            }
+        }
+        if (!fused_qkv) {
+            if (o.fused_attention_proj) ++st->attention_bundle_fallbacks;
+            mv(y.q_a, x, qa.data());
+            rmsnorm(qa.data(), y.q_a_norm.f(), c.rms_eps, c.q_lora, qr.data());
+            mv(y.q_b, qr.data(), q.data());
+            mv(y.kv, x, kv.data());
+        } else ++st->attention_bundle_calls;
+        for (int hh = 0; hh < nh; ++hh) { float* qh = &q[(size_t) hh * hd]; rmsnorm(qh, nullptr, c.rms_eps, hd, qh); rotary(qh, hd, rd, cs, sn, false); }
         rmsnorm(kv.data(), y.kv_norm.f(), c.rms_eps, hd, kvn.data());
         rotary(kvn.data(), hd, rd, cs, sn, false);
         if (o.qat_sim) fp8_sim(kvn.data(), hd - rd, 64);
@@ -828,7 +869,7 @@ struct Model::Impl {
         p.bpe = y.bpe;
         for (int k = 0; k < K; ++k) {
             const int e = idx[k];
-            if (k >= K - o.cpu_experts) { miss[nmiss++] = k; continue; }
+            if (!o.cpu_on_cache_miss && k >= K - o.cpu_experts) { miss[nmiss++] = k; continue; }
             int s = (o.gpu && y.slots > 0) ? y.slot_of[(size_t) e] : -1;
             if (s < 0 && o.gpu && y.slots > 0) {   // admit into a free slot (static profile mode fills the rest on first use)
                 for (int q = 0; q < y.slots; ++q) if (y.occ[(size_t) q] < 0) { upload_slot(y, q, e); ++st->admits; s = q; break; }
@@ -840,6 +881,7 @@ struct Model::Impl {
                 ++nres;
             } else {
                 missed_now.push_back({l, e});
+                if (o.cpu_on_cache_miss) { miss[nmiss++] = k; continue; }
                 if (!device_experts || p.n >= gpu::kMaxHit) { miss[nmiss++] = k; continue; }
                 ExpSrc s2 = src_miss(y, e);
                 p.hg[p.n] = s2.g; p.hu[p.n] = s2.u; p.hd[p.n] = s2.d; p.w[p.n] = w[k]; ++p.n;

@@ -6,10 +6,12 @@ setlocal EnableDelayedExpansion
 for %%I in ("%~dp0.") do set "DSV4_SRC=%%~fI"
 if not defined ROCM_VENV set "ROCM_VENV=%DSV4_SRC%\..\.rocm-win"
 if not defined BUILD_DIR set "BUILD_DIR=%DSV4_SRC%\build-hip-win"
-if not defined BUILD_JOBS set "BUILD_JOBS=4"
+if not defined BUILD_JOBS set "BUILD_JOBS=32"
 if not defined DSV4_AVX2 set "DSV4_AVX2=OFF"
 if not defined DSV4_NATIVE_CPU set "DSV4_NATIVE_CPU=OFF"
 if not defined DSV4_CPU_BMI2 set "DSV4_CPU_BMI2=OFF"
+if not defined DSV4_CPU_AVX512 set "DSV4_CPU_AVX512=OFF"
+if not defined DSV4_MATVEC_THREADS set "DSV4_MATVEC_THREADS=256"
 if not defined DSV4_HIP_ARCHS (
   echo Set DSV4_HIP_ARCHS to the GPU architecture, for example gfx1030 for RX 6900 XT.
   exit /b 1
@@ -33,7 +35,8 @@ set "ROCM_PATH=%DSV4_ROCM%"
 set "PATH=%DSV4_ROCM%\bin;%DSV4_ROCM%\lib\llvm\bin;%PATH%"
 cmake -G Ninja -S "%DSV4_SRC%" -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release ^
   -DDSV4_WITH_HIP=ON -DDSV4_WITH_CUDA=OFF "-DDSV4_AVX2=%DSV4_AVX2%" "-DCMAKE_HIP_ARCHITECTURES=%DSV4_HIP_ARCHS%" ^
-  "-DDSV4_NATIVE_CPU=%DSV4_NATIVE_CPU%" "-DDSV4_CPU_BMI2=%DSV4_CPU_BMI2%" "-DDSV4_GGML_DIR=%DSV4_GGML_DIR%" ^
+  "-DDSV4_NATIVE_CPU=%DSV4_NATIVE_CPU%" "-DDSV4_CPU_BMI2=%DSV4_CPU_BMI2%" "-DDSV4_CPU_AVX512=%DSV4_CPU_AVX512%" ^
+  "-DDSV4_MATVEC_THREADS=%DSV4_MATVEC_THREADS%" "-DDSV4_GGML_DIR=%DSV4_GGML_DIR%" ^
   "-DCMAKE_C_COMPILER=%DSV4_ROCM_F%/lib/llvm/bin/clang.exe" ^
   "-DCMAKE_CXX_COMPILER=%DSV4_ROCM_F%/lib/llvm/bin/clang++.exe" ^
   "-DCMAKE_HIP_COMPILER=%DSV4_ROCM_F%/lib/llvm/bin/clang++.exe" ^

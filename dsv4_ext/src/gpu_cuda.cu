@@ -38,6 +38,7 @@ namespace {
 // A CUDA error is sticky for the rest of the context, so the first one is the interesting one: printed once,
 // remembered, and every later call reports failure instead of spamming the log or dying mid-token.
 bool g_cuda_err = false;
+bool g_shape_matvec = false;
 
 bool check(cudaError_t e, const char* what) {
     if (e == cudaSuccess) return true;
@@ -67,7 +68,12 @@ bool g_stage_consumed_valid[kMaxHit] = {};
 size_t g_stage_last_bpe = 0;
 
 constexpr int64_t kMaxDim = 16384;
-constexpr int kThreads = 256;
+#ifndef DSV4_MATVEC_THREADS
+#define DSV4_MATVEC_THREADS 256
+#endif
+constexpr int kThreads = DSV4_MATVEC_THREADS;
+static_assert(kThreads == 32 || kThreads == 64 || kThreads == 128 || kThreads == 256 || kThreads == 512,
+              "DSV4_MATVEC_THREADS must be 32, 64, 128, 256, or 512");
 
 void clear_staging_resources() {
     if (g_stage_pin && g_ready)
@@ -120,12 +126,14 @@ namespace gpu {
 namespace {
 
 // ---------------------------------------------------------------- matvec kernel
-// One block per output row, kThreads threads: each thread walks a strided slice of the row, decoding the
-// weights on the fly (the weights are the traffic here, not the activations). rows is gridDim.x, so the
-// 129280-row output projection is a single launch.
-template <class Tr>
+// One block per output row, BlockThreads threads: each thread walks a strided slice of the row, decoding
+// the weights on the fly (the weights are the traffic here, not the activations). rows is gridDim.x, so
+// the 129280-row output projection is a single launch.
+template <class Tr, int BlockThreads, bool EmulateVirtual256 = false>
 __global__ void matvec_kernel(const uint8_t* __restrict__ W, int64_t rows, int64_t rows_per_group, int in, int rb,
                               const float* __restrict__ x, float* __restrict__ y) {
+    static_assert(!EmulateVirtual256 || BlockThreads == 32,
+                  "the 256-lane emulation is only valid with 32 physical threads");
     const int64_t r = blockIdx.x;
     if (r >= rows) return;
     // The byte stride comes from row_bytes() on the host, the single source of truth shared with
@@ -138,16 +146,41 @@ __global__ void matvec_kernel(const uint8_t* __restrict__ W, int64_t rows, int64
     const uint8_t* w = W + (size_t) r * (size_t) rb;
     const float* xg = x + (size_t)(r / rows_per_group) * (size_t)in;
     float acc = 0.f;
-    for (int e = threadIdx.x; e < in; e += kThreads) acc += Tr::at(w, e) * xg[e];
-    __shared__ float red[kThreads];
+    if constexpr (EmulateVirtual256) {
+        // Preserve the old 256-thread kernel's reduction tree while running one wave.
+        // Each physical lane owns eight virtual lanes. Accumulator j follows virtual lane
+        // (threadIdx.x + 32*j), including its original +256 input stride and update order.
+        float v0 = 0.f, v1 = 0.f, v2 = 0.f, v3 = 0.f;
+        float v4 = 0.f, v5 = 0.f, v6 = 0.f, v7 = 0.f;
+        for (int base = (int)threadIdx.x; base < in; base += 256) {
+            v0 += Tr::at(w, base)      * xg[base];
+            v1 += Tr::at(w, base + 32) * xg[base + 32];
+            v2 += Tr::at(w, base + 64) * xg[base + 64];
+            v3 += Tr::at(w, base + 96) * xg[base + 96];
+            v4 += Tr::at(w, base + 128) * xg[base + 128];
+            v5 += Tr::at(w, base + 160) * xg[base + 160];
+            v6 += Tr::at(w, base + 192) * xg[base + 192];
+            v7 += Tr::at(w, base + 224) * xg[base + 224];
+        }
+        // Emulate the original shared-memory reduction's 128, 64, and 32 stages in
+        // registers before the same 32-lane shuffle reduction below.
+        v0 += v4; v1 += v5; v2 += v6; v3 += v7;
+        v0 += v2; v1 += v3;
+        acc = v0 + v1;
+    } else {
+        for (int e = threadIdx.x; e < in; e += BlockThreads) acc += Tr::at(w, e) * xg[e];
+    }
+    __shared__ float red[BlockThreads];
     red[threadIdx.x] = acc;
     __syncthreads();
 #ifdef DSV4_USE_HIP
-    // gfx1030 is wave32. Keep the original balanced-tree association exactly: shared-memory steps
-    // combine across waves first (128, 64, 32), then wave shuffles do the original 16..1 steps in
-    // lane zero's tree. This removes five CTA barriers without changing the summation order.
-    const int wave = (int)warpSize;
-    for (int s = kThreads / 2; s >= wave; s >>= 1) {
+    // Keep the original balanced-tree association exactly: shared-memory steps combine across
+    // waves first, then the first logical wave uses shuffles for lane zero's original tree. This
+    // removes CTA barriers without changing the summation order.
+    // A 32-thread block is a logical sub-wave on wave64 HIP devices. Use that width for the final
+    // shuffle so the single resident subgroup is reduced without referring to lanes outside it.
+    const int wave = (warpSize < BlockThreads) ? (int)warpSize : BlockThreads;
+    for (int s = BlockThreads / 2; s >= wave; s >>= 1) {
         if (threadIdx.x < s) red[threadIdx.x] += red[threadIdx.x + s];
         __syncthreads();
     }
@@ -168,12 +201,37 @@ __global__ void matvec_kernel(const uint8_t* __restrict__ W, int64_t rows, int64
     }
 #else
     #pragma unroll
-    for (int s = kThreads / 2; s > 0; s >>= 1) {
+    for (int s = BlockThreads / 2; s > 0; s >>= 1) {
         if (threadIdx.x < s) red[threadIdx.x] += red[threadIdx.x + s];
         __syncthreads();
     }
     if (threadIdx.x == 0) y[r] = red[0];
 #endif
+}
+
+// q_a's small learned RMSNorm stages qa with coalesced reads into shared memory,
+// then one thread reproduces the host's left-to-right double accumulation order.
+__global__ void rmsnorm_weighted_kernel(const float* x, const float* w, float eps, int n, float* y) {
+    extern __shared__ float qa[];
+    __shared__ float inv_rms;
+    for (int i = threadIdx.x; i < n; i += blockDim.x) qa[i] = x[i];
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        float mean;
+        {
+            double ss = 0.0;
+            for (int i = 0; i < n; ++i) {
+                const double v = (double)qa[i];
+                // A float32 square is exact in float64 (at most 48 significant bits),
+                // so contraction into FMA preserves the host's rounded double sum.
+                ss += v * v;
+            }
+            mean = (float)(ss / n);
+        }
+        inv_rms = 1.0f / sqrtf(mean + eps);
+    }
+    __syncthreads();
+    for (int i = threadIdx.x; i < n; i += blockDim.x) y[i] = w[i] * (qa[i] * inv_rms);
 }
 
 // ---------------------------------------------------------------- MoE kernels
@@ -206,9 +264,9 @@ __global__ void sum_rows_kernel(const float* __restrict__ tmp, int n, int64_t di
 }
 
 // ---------------------------------------------------------------- dispatch
-template <class Tr>
-bool launch_mv(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
-               const float* d_x, float* d_y) {
+template <class Tr, int BlockThreads, bool EmulateVirtual256 = false>
+bool launch_mv_width(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
+                     const float* d_x, float* d_y) {
     const size_t rb = row_bytes(type, in);
     if (!rb || groups <= 0 || rows_per_group <= 0 || in <= 0 || in > (1 << 30) ||
         groups > INT64_MAX / rows_per_group) return false;
@@ -218,8 +276,22 @@ bool launch_mv(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per
     // shared with dequant.cpp, and if a trait's block size disagrees with the type it claims to decode,
     // the honest answer is false ("wrote nothing, use the host") - not a row of zeros on the device.
     if (in % Tr::BE != 0 || (int64_t)(in / Tr::BE) * (int64_t) Tr::BB != (int64_t) rb) return false;
-    matvec_kernel<Tr><<<(unsigned) rows, kThreads>>>(W, rows, rows_per_group, (int) in, (int) rb, d_x, d_y);
+    matvec_kernel<Tr, BlockThreads, EmulateVirtual256><<<(unsigned) rows, BlockThreads>>>(
+        W, rows, rows_per_group, (int) in, (int) rb, d_x, d_y);
     return check(cudaGetLastError(), "matvec launch");
+}
+
+template <class Tr>
+bool launch_mv(uint32_t type, const uint8_t* W, int64_t groups, int64_t rows_per_group, int64_t in,
+               const float* d_x, float* d_y) {
+    // These two production matrices were materially faster with one wave per row on gfx1151.
+    // Keep every other shape on the configured fallback width; the policy is parsed once in init().
+    const bool tuned_shape = groups == 1 &&
+        ((type == T_Q8_0 && rows_per_group == 32768 && in == 1024) ||
+         (type == T_Q4_K && rows_per_group == 129280 && in == 4096));
+    if (g_shape_matvec && tuned_shape)
+        return launch_mv_width<Tr, 32, true>(type, W, groups, rows_per_group, in, d_x, d_y);
+    return launch_mv_width<Tr, kThreads>(type, W, groups, rows_per_group, in, d_x, d_y);
 }
 
 /// Every ggml type this file has a kernel for. One table, so type_supported(), experts_supported() and
@@ -247,6 +319,12 @@ const char* backend_name() {
 
 bool init(std::string& err) {
     if (g_ready) return true;
+    const char* matvec_policy = std::getenv("DSV4_MATVEC_POLICY");
+    if (matvec_policy && std::strcmp(matvec_policy, "fixed") != 0 && std::strcmp(matvec_policy, "shape") != 0) {
+        err = "DSV4_MATVEC_POLICY must be fixed or shape";
+        return false;
+    }
+    g_shape_matvec = matvec_policy && std::strcmp(matvec_policy, "shape") == 0;
     int ndev = 0;
     if (!check(cudaGetDeviceCount(&ndev), "get device count")) { err = std::string("cannot initialize ") + backend_name(); return false; }
     if (ndev == 0) { err = std::string("no ") + backend_name() + " device visible"; return false; }
@@ -258,6 +336,8 @@ bool init(std::string& err) {
 #else
     std::fprintf(stderr, "dsv4: CUDA device 0: %s (sm_%d%d)\n", prop.name, prop.major, prop.minor);
 #endif
+    std::fprintf(stderr, "dsv4: matvec policy %s (fallback block %d)\n",
+                 g_shape_matvec ? "shape" : "fixed", kThreads);
     size_t free_b = 0, total_b = 0;
     if (!check(cudaMemGetInfo(&free_b, &total_b), "cudaMemGetInfo")) { err = "cannot read VRAM size"; return false; }
     g_total = total_b; g_used = 0;
@@ -408,6 +488,34 @@ bool matvec_grouped(uint32_t type, const uint8_t* W, int64_t groups, int64_t row
         case T_MXFP4:   return launch_mv<dqt::MXFP4T>(type, W, groups, rows_per_group, in, d_x, d_y);
         default: return false;
     }
+}
+
+bool attention_qkv_bundle(uint32_t q_a_type, const uint8_t* q_a_W, int64_t q_lora, int64_t dim,
+                          uint32_t kv_type, const uint8_t* kv_W, int64_t kv_rows,
+                          uint32_t q_b_type, const uint8_t* q_b_W, int64_t q_rows,
+                          const float* q_a_norm, float eps, const float* d_x,
+                          float* d_workspace, size_t workspace_floats) {
+    if (!g_ready || g_cuda_err || !q_a_W || !kv_W || !q_b_W || !q_a_norm || !d_x || !d_workspace ||
+        !supported(q_a_type) || !supported(kv_type) || !supported(q_b_type) ||
+        q_lora <= 0 || dim <= 0 || kv_rows <= 0 || q_rows <= 0 ||
+        q_lora > 8192 || dim > INT_MAX || kv_rows > INT_MAX || q_rows > INT_MAX ||
+        !row_bytes(q_a_type, dim) || !row_bytes(kv_type, dim) || !row_bytes(q_b_type, q_lora)) return false;
+    const uint64_t q = (uint64_t)q_rows, kv = (uint64_t)kv_rows, lora = (uint64_t)q_lora;
+    if (q > SIZE_MAX - kv || q + kv > SIZE_MAX - lora || q + kv + lora > SIZE_MAX - lora) return false;
+    const size_t packed_floats = (size_t)(q + kv + lora);
+    if (packed_floats + (size_t)q_lora > workspace_floats) return false;
+
+    // Packed output is [q | kv | normalized qr]; qa uses the trailing scratch.
+    // These offsets remain disjoint until q_b has consumed qr.
+    float* d_q = d_workspace;
+    float* d_kv = d_workspace + (size_t)q_rows;
+    float* d_qr = d_kv + (size_t)kv_rows;
+    float* d_qa = d_workspace + packed_floats;
+    if (!matvec(q_a_type, q_a_W, q_lora, dim, d_x, d_qa)) return false;
+    if (!matvec(kv_type, kv_W, kv_rows, dim, d_x, d_kv)) return false;
+    rmsnorm_weighted_kernel<<<1, 256, (size_t)q_lora * sizeof(float)>>>(d_qa, q_a_norm, eps, (int)q_lora, d_qr);
+    if (!check(cudaGetLastError(), "attention q_a RMSNorm launch")) return false;
+    return matvec(q_b_type, q_b_W, q_rows, q_lora, d_qr, d_q);
 }
 
 bool experts_hit(const ExpPtrs& p, uint32_t type_g, uint32_t type_u, uint32_t type_d, int64_t ff, int64_t dim,

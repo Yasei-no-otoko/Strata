@@ -20,6 +20,8 @@ struct NativeCpuFormat {
 
 /// True only in a DSV4_NATIVE_CPU build and when this CPU/OS provides the configured ISA floor.
 bool native_cpu_available() noexcept;
+/// True when the optional IQ1_M override's AVX-512F/BW/VNNI ISA and ZMM OS state are available.
+bool native_cpu_avx512_available() noexcept;
 /// Build/version/ISA information suitable for a startup diagnostic.
 std::string native_cpu_description();
 
@@ -34,5 +36,9 @@ bool native_cpu_prepare(const NativeCpuFormat& format, const float* x, std::vect
 /// Compute one row with ggml-cpu's vec_dot. `activation` must be prepared with the same format.
 bool native_cpu_dot(const NativeCpuFormat& format, const uint8_t* weight_row, const uint8_t* activation,
                     float& result) noexcept;
+
+/// AVX-512 VNNI IQ1_M row dot; callers must check native_cpu_avx512_available() first.
+bool native_cpu_dot_iq1m_avx512(const uint8_t* weight_row, const uint8_t* activation, int64_t n,
+                                float& result) noexcept;
 
 }  // namespace dsv4

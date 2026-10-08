@@ -92,6 +92,15 @@ bool matvec_grouped(uint32_t type, const uint8_t* W, int64_t groups, int64_t row
     return true;
 }
 
+bool attention_qkv_bundle(uint32_t, const uint8_t*, int64_t, int64_t,
+                          uint32_t, const uint8_t*, int64_t,
+                          uint32_t, const uint8_t*, int64_t,
+                          const float*, float, const float*, float*, size_t) {
+    // The emulated backend intentionally declines the fused device pipeline.
+    // Model::attention then uses the existing host/reference sequence.
+    return false;
+}
+
 bool experts_hit(const ExpPtrs& p, uint32_t type_g, uint32_t type_u, uint32_t type_d, int64_t ff, int64_t dim,
                  float swiglu_limit, const float* d_x, float* d_g, float* d_u, float* d_a, float* d_y) {
     if (p.n <= 0) return true;

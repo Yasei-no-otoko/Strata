@@ -49,9 +49,11 @@ static void usage() {
         "  --selfcheck               dequantisation statistics of real tensors, then exit if no prompt is given\n"
         "  --quiet                   no startup report on stderr (serve/server.py keeps its own log)\n"
         "  --profile-timing          print host wall-clock phase totals (nested fields overlap)\n"
+        "  --fused-attention-proj    fuse q_a/norm/q_b and kv projections into one GPU input/output transfer\n"
         "  --no-grouped-attention    compare with separate attention output-projection transfers\n"
         "  --no-fused-shared         compare with host shared-expert activations\n"
         "  --cpu-experts N           evaluate the last N routed experts on the CPU (0 = device staging)\n"
+        "  --cpu-on-cache-miss      GPU-resident experts on device; nonresident experts on native CPU (requires --cpu-experts K)\n"
         "  --cpu-threads N           persistent CPU MoE participants (0 = follow --threads)\n"
         "  --cpu-moe-kernel auto|native|reference  native uses ggml activation quantization\n"
         "  --no-cpu-pin              disable physical-core affinity for CPU expert workers\n"
@@ -99,9 +101,11 @@ int main(int argc, char** argv) {
         else if (a == "--max-layers") o.max_layers = std::atoi(next());
         else if (a == "--quiet") o.verbose = false;
         else if (a == "--profile-timing") o.profile_timing = true;
+        else if (a == "--fused-attention-proj") o.fused_attention_proj = true;
         else if (a == "--no-grouped-attention") o.grouped_attention = false;
         else if (a == "--no-fused-shared") o.fused_shared = false;
         else if (a == "--cpu-experts") o.cpu_experts = std::atoi(next());
+        else if (a == "--cpu-on-cache-miss") o.cpu_on_cache_miss = true;
         else if (a == "--cpu-threads") o.cpu_threads = std::atoi(next());
         else if (a == "--cpu-moe-kernel") o.cpu_moe_kernel = next();
         else if (a == "--no-cpu-pin") o.cpu_pin = false;
@@ -202,6 +206,9 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "  staged expert H2D: %.3f GiB\n  CPU expert evaluations: %llu\n",
                  s.staged_bytes / 1073741824.0, (unsigned long long) s.cpu_experts);
     std::fprintf(stderr, "  native quantized CPU expert evaluations: %llu\n", (unsigned long long)s.native_cpu_experts);
+    if (o.fused_attention_proj)
+        std::fprintf(stderr, "  fused attention projection bundles: %llu (reference fallbacks: %llu)\n",
+                     (unsigned long long)s.attention_bundle_calls, (unsigned long long)s.attention_bundle_fallbacks);
     if (o.profile_timing)
         std::fprintf(stderr, "host phase wall time (nested, not additive):\n  forward: %.3f s\n  attention: %.3f s\n    sparse attention: %.3f s\n  MoE: %.3f s\n  hyperconnections: %.3f s\n  dense matvec round trips (inside above phases and output head): %.3f s\n",
                      s.total_s, s.attention_s, s.sparse_attention_s, s.moe_s, s.hyper_s, s.dense_mv_s);
