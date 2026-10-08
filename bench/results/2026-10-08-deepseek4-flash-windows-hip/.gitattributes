@@ -1,2 +1,4 @@
 # The manifest hashes the exact saved prompt bytes; avoid checkout EOL conversion.
 short-128-input/* -text
+# Engine token traces intentionally retain the separator after the final token.
+api-engine.txt whitespace=-blank-at-eol
