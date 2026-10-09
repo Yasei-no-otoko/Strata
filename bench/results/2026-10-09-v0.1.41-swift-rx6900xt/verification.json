@@ -1,0 +1,103 @@
+{
+  "verified_at_jst": "2026-10-09T09:58:20.531882+09:00",
+  "release": "v0.1.41",
+  "release_commit": "fb58e0dbc8399662c0e47c76578c6e878b14f6cf",
+  "source_merge_commit": "5560805d749d76a925773c4bf6645bcb329cad40",
+  "endpoint": "http://127.0.0.1:8081",
+  "archive": {
+    "url": "https://github.com/Niko1221/Strata/releases/download/v0.1.41/strata-windows-x64-hip.zip",
+    "sha256": "e8701d1d183f0f84742f6b9dcde7c5589cfd86271cdec70646f88cf441ee6716",
+    "published_digest": "sha256:e8701d1d183f0f84742f6b9dcde7c5589cfd86271cdec70646f88cf441ee6716"
+  },
+  "engine_sha256": "5b5285c726e76ab307a6956fcefff0fcdde90e59d566d17c28e410471b9fd756",
+  "engine_matches_release": true,
+  "vision_exe_sha256": "0abe56ac988a727849602e652ed6501a4b023ba837bdfbcb3d8e705f692c29ed",
+  "vision_exe_unchanged": true,
+  "config_sha256": "3213f66bd950da1376ceb56af91c37be95f402b1f228d124c0da9c6ed22292c8",
+  "config_unchanged": true,
+  "data_files_preserved": {
+    "comparison": "paths, sizes and modification times",
+    "all_equal": true,
+    "count": 68
+  },
+  "health": {
+    "status": "ok",
+    "max_context": 131072,
+    "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+    "images": true,
+    "api_key": false,
+    "loaded": true,
+    "service": "strata"
+  },
+  "build_info": "Strata 0.1.41",
+  "model_ids": [
+    "huihui-swift-1.5-abliterated-iq3_xxs"
+  ],
+  "web_status": 200,
+  "chat_reply": "Swift ready.",
+  "responses_reply": [
+    "Strata updated."
+  ],
+  "vision": {
+    "fixture": "bench\\results\\2026-10-07-windows-hip-vision-rx6900xt\\vision-chat.png",
+    "sha256": "afc0c8a1969e70e9783b4d8d1b58ecd385bb56083da102a6164554af4684f3f7",
+    "response": {
+      "id": "chatcmpl-80a4da6f56a44cfd8bc814bc",
+      "object": "chat.completion",
+      "created": 1791507501,
+      "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "Here is a description of the shapes, colors, and printed text in the image:\n\n**Shapes and Colors:**\n- On the left side of the image, there is a large, solid **red circle**.\n- On the right side of the image, there is a large, solid **blue square**.\n- Both shapes are positioned against a plain **white background**.\n\n**Printed Text:**\n- Below the two shapes, centered horizontally, is the text: **HIP2026**\n- The text is in a bold, black, sans-serif font."
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 269,
+        "completion_tokens": 119,
+        "total_tokens": 388,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 269,
+        "prompt_ms": 12771.3,
+        "prompt_per_token_ms": 47.477,
+        "prompt_per_second": 21.1,
+        "predicted_n": 119,
+        "predicted_ms": 2984.3,
+        "predicted_per_token_ms": 25.078,
+        "predicted_per_second": 39.9,
+        "draft_n": 103,
+        "draft_n_accepted": 79
+      }
+    }
+  },
+  "runtime_evidence": [
+    "strata-vision: GPU backend ROCm, device ROCm0 (AMD Radeon RX 6900 XT)",
+    "strata-vision: warmed up at 289 image tokens in 1.5 s",
+    "strata generate: GPU 0: AMD Radeon RX 6900 XT (gfx1030)",
+    "strata generate: HIP runtime C:\\Dev\\Strata\\engine\\amdhip64_7.dll",
+    "strata generate: session is up (engine 0.1.41)"
+  ],
+  "setup_update_tests": {
+    "command": ".venv\\Scripts\\python.exe tools/test_setup_update.py",
+    "passed": 8
+  },
+  "pip_check": "No broken requirements found",
+  "final_health": {
+    "status": "ok",
+    "max_context": 131072,
+    "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+    "images": true,
+    "api_key": false,
+    "loaded": true,
+    "service": "strata"
+  }
+}
