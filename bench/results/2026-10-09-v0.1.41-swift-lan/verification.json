@@ -1,0 +1,23 @@
+{
+  "checked_at_jst": "2026-10-09T14:09:42+09:00",
+  "bind": "0.0.0.0",
+  "lan_address": "192.168.0.4",
+  "port": 8081,
+  "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+  "loaded": true,
+  "images": true,
+  "api_key_required": true,
+  "version": "Strata 0.1.41",
+  "local_health": "ok",
+  "lan_health": "ok",
+  "no_key_http_status": 401,
+  "wrong_key_http_status": 401,
+  "correct_key_http_status": 200,
+  "local_key_http_status": 200,
+  "chat_reply": "LAN ready.",
+  "ethernet_profile": "Private",
+  "config_unchanged": true,
+  "credential_file_access_rules": 1,
+  "external_device_tested": false,
+  "web_http_status": 200
+}

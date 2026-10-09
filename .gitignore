@@ -26,6 +26,7 @@ __pycache__/
 td.log
 
 # created by setup.py on the user's machine
+/.env
 /.venv/
 /build/
 /third_party/llama.cpp
