@@ -1,0 +1,116 @@
+{
+  "release": "v0.2.2",
+  "release_commit": "011c9e600a93bbc9fd451c563501b5831c32bbca",
+  "engine_version": "0.1.47",
+  "archive_sha256": "f9e8954f2bf1c153994441ffd69006f0492e1d8300650098058ede1a4d7c742a",
+  "official_package_verification": {
+    "package_files_verified": 320,
+    "all_package_files_match": true,
+    "metadata_source_normalized_to_prebuilt_by_setup": true,
+    "engine_sha256": "9b8013c3533fecbfeb7c05c2c40e6270c1afc2e3b69599bfd8d04abf3f7d67ee",
+    "vision_hip_sha256": "10954746e19a830bdbc53b5ddee5f2a26742dd6bd03bcea5114f60c7be0282e1",
+    "vision_cpu_sha256": "ad646b786e8d255dda994ae5f9e8c4e81c42aa25ab92ac2caaa8979ec8c64978"
+  },
+  "signed_feed_test_start": {
+    "mode": "full",
+    "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+    "state": "ready",
+    "generation_ready": true,
+    "detail": "started, answered a one-token probe, stopped"
+  },
+  "local_vision_build": {
+    "app_source": "v0.2.2",
+    "source_commit": "011c9e600a93bbc9fd451c563501b5831c32bbca",
+    "engine_version": "0.1.47",
+    "vision_exe": "strata-vision-hip-gfx1030.exe",
+    "vision_sha256": "9e41eeeeb6a1f3dfca426985cb296d65168123d8455fea6eb3c4e8536f715df7",
+    "source_modified": false,
+    "llama_cpp_commit": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+    "rocm": "10.2.0a20260930",
+    "archs": [
+      "gfx1030"
+    ],
+    "portable_avx2": true,
+    "hip_vmm": false,
+    "official_package_files_unchanged": true,
+    "reason": "Official rdna2 vision reader reports gfx1200,gfx1201 and rejects gfx1030; retain official payload and select a separate local build."
+  },
+  "runtime": {
+    "checked_at": "2026-10-22T05:26:24.013704+00:00",
+    "app_release": "0.2.2",
+    "expected_engine": "0.1.47",
+    "hardware": "RX 6900 XT / gfx1030 / 16 GiB",
+    "transport": "same-PC loopback, isolated temporary server",
+    "physical_lan_client_tested": false,
+    "prompt_f16": true,
+    "checks": {
+      "health": {
+        "status": "ok",
+        "loaded": true,
+        "model": "huihui-swift-1.5-abliterated-iq3_xxs",
+        "max_context": 131072,
+        "images": true,
+        "api_key": true
+      },
+      "auth": {
+        "no_key": 401,
+        "correct_key": 200
+      },
+      "build_info": "Strata 0.1.47",
+      "chat": {
+        "answer": "Swift ready.",
+        "elapsed_seconds": 0.547
+      },
+      "responses": {
+        "answer": "Strata updated.",
+        "elapsed_seconds": 0.438
+      },
+      "vision_chat": {
+        "answer": "The two shapes from left to right are a red circle and a blue square, with the large text below them reading HIP2026.",
+        "fixture": "vision-chat.png",
+        "elapsed_seconds": 4.328
+      },
+      "vision_responses": {
+        "answer": "The two shapes are a red circle and a blue square, with the text HIP2027 below them.",
+        "fixture": "vision-responses.png",
+        "elapsed_seconds": 3.844
+      },
+      "runtime_engine": "0.1.47",
+      "gpu_reader_requested": true,
+      "engine_gpu_identified": true,
+      "gpu_reader_warmup": true,
+      "cpu_fallback_used": false,
+      "gpu_reader_log": [
+        "strata-vision: model files loaded in 2.4 s",
+        "strata-vision: warmed up at 289 image tokens in 1.1 s",
+        "strata generate: GPU 0: AMD Radeon RX 6900 XT (gfx1030)"
+      ]
+    },
+    "all_passed": true,
+    "temporary_server_stop_ok": true
+  },
+  "preservation": {
+    "model_inventory_unchanged": true,
+    "model_files": 60,
+    "model_bytes": 172250859305,
+    "fields_compared": [
+      "relative_path",
+      "size",
+      "mtime_ns"
+    ],
+    "config_changes": [
+      "vision.exe",
+      "vision.cpu_exe"
+    ],
+    "other_model_config_fields_unchanged": true,
+    "normal_launcher_unchanged": true,
+    "lan_wrapper_unchanged": true,
+    "lan_bat_updated_to_normal_config_and_engine_0_1_47": true,
+    "api_key_file_acl_unchanged": true
+  },
+  "limitations": [
+    "No separate physical LAN client tested",
+    "No speedup or quality-equivalence claim",
+    "One RX 6900 XT only"
+  ]
+}
